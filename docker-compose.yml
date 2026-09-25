@@ -1,0 +1,33 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: uxn
+      POSTGRES_PASSWORD: uxn
+      POSTGRES_DB: uxnweb
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uxn"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://uxn:uxn@db:5432/uxnweb
+      ETAL_BIN: /opt/uxn-dsl/build/linux-x86/etal
+      ETAL_VERSION: "0.1.1"
+    volumes:
+      # Dev only: live compiler checkout (read-only). Production bakes
+      # uxn-dsl into the image at the same path instead.
+      - ../../uxn-dsl:/opt/uxn-dsl:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
