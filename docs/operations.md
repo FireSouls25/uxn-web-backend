@@ -5,7 +5,7 @@
 | Variable | Default | Meaning |
 |---|---|---|
 | `ETAL_BIN` | `<checkout>/uxn-dsl/build/linux-x86/etal` | Compiler binary |
-| `ETAL_VERSION` | `0.1.1` | Pinned compiler version; client mismatches get 409 |
+| `ETAL_VERSION` | `0.1.3` | Pinned compiler version; client mismatches get 409 |
 | `DATABASE_URL` | `postgresql+psycopg://uxn:uxn@localhost:5432/uxnweb` | Postgres (sqlite URL works for tests) |
 | `API_KEYS` | *(empty = open)* | Comma-separated service keys for `X-API-Key`. Empty disables service auth — dev only |
 | `ETAL_SOURCE` | `local` | Compiler strategy: `local` (dev checkout) or `release:<tag>` (pinned GitHub release, hash-verified) |
@@ -40,9 +40,17 @@ ETAL_SOURCE=release:v0.1.3 COMPILER_DIR=/tmp/etal ./scripts/fetch-compiler.sh
 Release tarballs come from the compiler repo's GitHub releases and are
 **refused unless their sha256 is pinned** in `compiler-sha256.txt`
 (add a row per upgrade). The Docker image bakes `release:vX` at build
-time (`ARG ETAL_VERSION`); compose overrides `ETAL_BIN` to a live
-checkout mount for development. `/health` reports `compiler: ok` or
+time (`ARG ETAL_VERSION`); compose uses the same baked binary (a
+host-checkout mount does not work — see gotchas). `/health` reports `compiler: ok` or
 the guidance string when nothing resolves.
+
+Two container gotchas, both bitten once:
+* Never mount a host-built `etal` into the slim image — it needs a
+  newer glibc than the image provides. The baked release binary is
+  the only compiler compose uses.
+* The image must install `libsdl2-2.0-0`: the vendored `uxn2` VM links
+  SDL2 dynamically and assembly (via drifblim) runs inside it, even
+  headless.
 
 ## Security model
 

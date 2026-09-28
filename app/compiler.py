@@ -109,14 +109,38 @@ def etal_bin() -> str:
     raise FileNotFoundError(settings.etal_bin)
 
 
+def _smoke_test(path: str) -> str:
+    """Run --list-targets: proves the binary executes here, not just +x.
+
+    (A host-built checkout binary can be +x yet die on glibc inside
+    the slim image — this is what health reports on.)
+    """
+    try:
+        proc = subprocess.run(
+            [path, "--list-targets"], capture_output=True, text=True, timeout=15
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return f"cannot execute: {e}"
+    if proc.returncode != 0:
+        last = (proc.stderr or proc.stdout).strip().splitlines()
+        return f"exit {proc.returncode}: {last[-1] if last else 'no output'}"
+    return ""
+
+
 def ensure_compiler() -> str:
     """Return a working etal path, fetching the pinned release when the
     checkout is absent and ETAL_SOURCE=release:<tag>. Raises
     FileNotFoundError with guidance otherwise."""
     try:
-        return etal_bin()
+        candidate = etal_bin()
     except FileNotFoundError:
-        pass
+        candidate = ""
+    if candidate:
+        problem = _smoke_test(candidate)
+        if not problem:
+            return candidate
+    else:
+        problem = "no candidate binary"
     source = os.environ.get("ETAL_SOURCE", "local")
     if source.startswith("release:") and FETCH_SCRIPT.is_file():
         proc = subprocess.run(
@@ -126,10 +150,14 @@ def ensure_compiler() -> str:
             timeout=300,
         )
         if proc.returncode == 0:
-            return etal_bin()
+            fetched = etal_bin()
+            problem = _smoke_test(fetched)
+            if not problem:
+                return fetched
+            raise FileNotFoundError(f"fetched compiler fails smoke test: {problem}")
         raise FileNotFoundError(f"compiler fetch failed: {proc.stderr.strip()}")
     raise FileNotFoundError(
-        f"no usable compiler (ETAL_BIN={settings.etal_bin}, "
+        f"no usable compiler ({problem}; ETAL_BIN={settings.etal_bin}, "
         f"{COMPILER_DIR}/etal missing, ETAL_SOURCE={source})"
     )
 

@@ -5,6 +5,15 @@ import os
 from pathlib import Path
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
+# Local/dev convenience: a backend/.env next to this file fills any
+# variable the real environment leaves unset. Compose and production
+# provide real env, which always wins.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(BACKEND_DIR / ".env")
+except ImportError:
+    pass
 # Local-dev fallback: compiler checkout next to uxn-webpage/.
 DEV_ETAL = BACKEND_DIR.parent.parent / "uxn-dsl" / "build" / "linux-x86" / "etal"
 
@@ -15,7 +24,7 @@ def _env(name: str, default: str) -> str:
 
 class Settings:
     etal_bin: str = _env("ETAL_BIN", str(DEV_ETAL) if DEV_ETAL.exists() else "etal")
-    etal_version: str = _env("ETAL_VERSION", "0.1.1")
+    etal_version: str = _env("ETAL_VERSION", "0.1.3")
     database_url: str = _env(
         "DATABASE_URL",
         "postgresql+psycopg://uxn:uxn@localhost:5432/uxnweb",

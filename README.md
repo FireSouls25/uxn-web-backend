@@ -1,8 +1,9 @@
 # Local development (uv + mise).
-cp .env.example .env   # then point ETAL_BIN at your checkout if needed
 uv sync
 uv run pytest
 uv run uvicorn app.main:app --reload --port 8000
+# No env needed locally: backend/.env supplies dev defaults
+# (see .env.example). Real environment always wins over .env.
 
 # Docker (API + Postgres). The compiler checkout mounts read-only;
 # production images should bake it in instead (see Dockerfile).

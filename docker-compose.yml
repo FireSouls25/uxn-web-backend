@@ -19,12 +19,13 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql+psycopg://uxn:uxn@db:5432/uxnweb
-      ETAL_BIN: /opt/uxn-dsl/build/linux-x86/etal
-      ETAL_VERSION: "0.1.1"
-    volumes:
-      # Dev only: live compiler checkout (read-only). Production bakes
-      # uxn-dsl into the image at the same path instead.
-      - ../../uxn-dsl:/opt/uxn-dsl:ro
+      # Baked release binary (see Dockerfile). NOT a checkout mount: a
+      # host-built etal needs a newer glibc than this slim image
+      # provides, so the mount would be a dead binary.
+      ETAL_BIN: /opt/etal/etal
+      ETAL_SOURCE: "release:v0.1.3"
+      ETAL_VERSION: "0.1.3"
+      CORS_ORIGINS: http://localhost:3000,http://localhost:8000,http://localhost:4321
     depends_on:
       db:
         condition: service_healthy

@@ -9,7 +9,7 @@ All messages are bilingual — see *Language* below.
 Liveness. `{"status": "ok"}`. Public, no key.
 
 ### `GET /version`
-`{"backend": "0.1.0", "etal": "0.1.1"}`. Public. The frontend sends
+`{"backend": "0.1.0", "etal": "0.1.3"}`. Public. The frontend sends
 its expected `etal` in every compile; mismatches are rejected (409).
 
 ### `GET /targets`
@@ -26,7 +26,7 @@ Compile a file tree. Requires `X-API-Key` when `API_KEYS` is set.
   "mode": "bundle",
   "entry": "main.ux",
   "files": {"main.ux": "main :: fn() {\n    print(\"hi\");\n}\n"},
-  "etal_version": "0.1.1",
+  "etal_version": "0.1.3",
   "lang": "en"
 }
 ```
