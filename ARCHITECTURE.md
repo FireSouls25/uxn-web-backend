@@ -63,12 +63,16 @@ tree, runs the pinned compiler, and returns build artifacts.
 
 v1 (this milestone):
 
-* [ ] `POST /compile` for `rom` + `web` targets
-* [ ] `GET /targets`, `GET /version`, `GET /health`
-* [ ] Diagnostic parsing to `{file, line, col, msg}`
-* [ ] Content-hash compile cache
-* [ ] Explicit-row bundles (`linux-*`, `macos-*`) once verified
-* [ ] Dockerfile pinning `flake.lock`
+* [x] `POST /compile` for `rom` + `web` targets
+* [x] `GET /targets`, `GET /version`, `GET /health`
+* [x] Diagnostic parsing to `{file, line, col, msg}`
+* [x] Content-hash compile cache (identical requests return the original job)
+* [x] Explicit-row bundles (`linux-*`, `macos-*`) once verified
+* [x] Hardening: `X-API-Key` service auth + real user accounts (JWT
+  access, rotating refresh, bcrypt), per-key/IP rate limits with
+  `Retry-After`, compile slots with 503, CORS, security headers
+* [x] Dockerfile with pinned compiler release (hash-verified GitHub
+  asset, baked at build; `ARG ETAL_VERSION`)
 
 v2 (deferred):
 

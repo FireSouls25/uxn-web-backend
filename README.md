@@ -9,3 +9,5 @@ uv run uvicorn app.main:app --reload --port 8000
 docker compose up --build
 
 Open http://localhost:8000/docs for the interactive API.
+Full references live in `docs/`: `api.md` (endpoints, codes, i18n),
+`operations.md` (env vars, docker, security model, upgrades).

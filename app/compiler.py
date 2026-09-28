@@ -4,10 +4,15 @@ subprocess invocation, and diagnostic parsing.
 The compiler is the source of truth for ETAL semantics; this module
 only transports bytes and translates its
 `etal: error: file:line:col: msg` stderr into structured diagnostics.
+
+Provisioning: ETAL_BIN (dev checkout) wins; otherwise $COMPILER_DIR/etal
+(release fetch target); otherwise `ensure_compiler()` fetches the pinned
+release when ETAL_SOURCE=release:<tag> (see scripts/fetch-compiler.sh).
 """
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import shutil
 import subprocess
@@ -83,13 +88,50 @@ def files_sha(files: dict[str, str]) -> str:
     return h.hexdigest()
 
 
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+COMPILER_DIR = Path(os.environ.get("COMPILER_DIR", "/opt/etal"))
+FETCH_SCRIPT = BACKEND_DIR / "scripts" / "fetch-compiler.sh"
+
+
+def _usable(path: str) -> bool:
+    p = Path(path)
+    return p.is_file() and os.access(p, os.X_OK)
+
+
 def etal_bin() -> str:
-    found = shutil.which(settings.etal_bin) or (
-        settings.etal_bin if Path(settings.etal_bin).exists() else None
+    candidates = [settings.etal_bin, str(Path(COMPILER_DIR) / "etal")]
+    found = shutil.which(settings.etal_bin)
+    if found:
+        candidates.insert(0, found)
+    for candidate in candidates:
+        if candidate and _usable(candidate):
+            return candidate
+    raise FileNotFoundError(settings.etal_bin)
+
+
+def ensure_compiler() -> str:
+    """Return a working etal path, fetching the pinned release when the
+    checkout is absent and ETAL_SOURCE=release:<tag>. Raises
+    FileNotFoundError with guidance otherwise."""
+    try:
+        return etal_bin()
+    except FileNotFoundError:
+        pass
+    source = os.environ.get("ETAL_SOURCE", "local")
+    if source.startswith("release:") and FETCH_SCRIPT.is_file():
+        proc = subprocess.run(
+            [str(FETCH_SCRIPT), source],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if proc.returncode == 0:
+            return etal_bin()
+        raise FileNotFoundError(f"compiler fetch failed: {proc.stderr.strip()}")
+    raise FileNotFoundError(
+        f"no usable compiler (ETAL_BIN={settings.etal_bin}, "
+        f"{COMPILER_DIR}/etal missing, ETAL_SOURCE={source})"
     )
-    if not found:
-        raise FileNotFoundError(settings.etal_bin)
-    return found
 
 
 def query_rows() -> dict[str, dict[str, object]]:

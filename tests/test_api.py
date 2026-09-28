@@ -1,18 +1,30 @@
-"""API tests. Bring your own DB via DATABASE_URL (sqlite works);
-the local compiler checkout is discovered automatically."""
+"""API tests. Fresh sqlite DB per run; the local compiler checkout
+is discovered automatically."""
 from __future__ import annotations
 
 import os
+import tempfile
 
-os.environ.setdefault("DATABASE_URL", "sqlite:////tmp/uxnweb-test.db")
+_db = tempfile.NamedTemporaryFile(prefix="uxnweb-test-", suffix=".db", delete=False)
+os.environ["DATABASE_URL"] = f"sqlite:///{_db.name}"
 
+import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
+from app import limits  # noqa: E402
+from app.config import settings  # noqa: E402
 from app.main import app  # noqa: E402
 
 client = TestClient(app)
 
 HELLO = 'main :: fn() {\n    print("hi");\n}\n'
+
+
+@pytest.fixture(autouse=True)
+def _clean():
+    limits.reset_limits()
+    yield
+    limits.reset_limits()
 
 
 def _compile(**kw):
@@ -22,7 +34,9 @@ def _compile(**kw):
 
 
 def test_health():
-    assert client.get("/health").json() == {"status": "ok"}
+    body = client.get("/health").json()
+    assert body["status"] == "ok"
+    assert body["compiler"] == "ok"
 
 
 def test_targets():
@@ -36,10 +50,20 @@ def test_compile_tal():
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["status"] == "ok"
+    assert body["cached"] is False
     assert "@main" in body["artifacts"]["tal"] or "main" in body["artifacts"]["tal"]
     # Stored job round-trips the same bytes.
     job = client.get(f"/jobs/{body['job_id']}").json()
     assert job["artifacts"] == body["artifacts"]
+
+
+def test_compile_cache_hit():
+    first = _compile(mode="rom").json()
+    second = _compile(mode="rom").json()
+    assert first["status"] == "ok" and second["status"] == "ok"
+    assert second["cached"] is True
+    assert second["job_id"] == first["job_id"]
+    assert second["artifacts"] == first["artifacts"]
 
 
 def test_compile_rom_and_bundle():
@@ -75,3 +99,41 @@ def test_rejections():
     )
     assert r.status_code == 409
     assert client.get("/jobs/00000000-0000-0000-0000-000000000000").status_code == 404
+
+
+def test_auth(monkeypatch):
+    monkeypatch.setenv("API_KEYS", "secret-1")
+    assert _compile().status_code == 401
+    assert _compile().headers.get("content-type", "").startswith("application/json")
+    assert client.post(
+        "/compile",
+        json={"target": "linux", "mode": "tal", "entry": "main.ux",
+              "files": {"main.ux": HELLO}},
+        headers={"X-API-Key": "wrong"},
+    ).status_code == 401
+    ok = client.post(
+        "/compile",
+        json={"target": "linux", "mode": "tal", "entry": "main.ux",
+              "files": {"main.ux": HELLO}},
+        headers={"X-API-Key": "secret-1"},
+    )
+    assert ok.status_code == 200
+
+
+def test_rate_limit(monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_per_minute", 1)
+    assert _compile().status_code == 200
+    r = _compile()
+    assert r.status_code == 429
+    assert "Retry-After" in r.headers
+    es = _compile(lang="es")
+    assert es.status_code == 429
+    assert "Reintente" in es.json()["detail"]
+
+
+def test_server_busy(monkeypatch):
+    monkeypatch.setattr(settings, "max_concurrent_compiles", 0)
+    other = 'main :: fn() {\n    print("busy");\n}\n'
+    r = _compile(files={"main.ux": other})
+    assert r.status_code == 503
+    assert r.json()["detail"]

@@ -31,6 +31,7 @@ class CompileResponse(BaseModel):
     job_id: str
     message: str
     diagnostics: list[Diagnostic] = []
+    cached: bool = False
     artifacts: dict[str, str] = Field(
         default_factory=dict,
         description="tal (text) and/or rom_b64, html_b64, bundle_b64",
@@ -54,6 +55,41 @@ class VersionResponse(BaseModel):
     etal: str
 
 
+class HealthResponse(BaseModel):
+    status: str
+    compiler: str
+
+
 class JobResponse(CompileResponse):
     target: str
     mode: str
+
+
+class RegisterRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+    lang: Lang = "en"
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+    lang: Lang = "en"
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class TokenPair(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+
+class UserProfile(BaseModel):
+    id: str
+    name: str
+    email: str
