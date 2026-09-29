@@ -49,7 +49,6 @@ class User(Base):
 
 class RefreshToken(Base):
     """One row per live refresh token; rotation deletes the old row."""
-
     __tablename__ = "refresh_tokens"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -59,3 +58,32 @@ class RefreshToken(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
+
+
+class LLMUsage(Base):
+    """Token ledger, one row per reported call. Budgets count tokens,
+    never dollars (no hallucinated price table)."""
+
+    __tablename__ = "llm_usage"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    day: Mapped[str] = mapped_column(String(10), index=True)
+    provider: Mapped[str] = mapped_column(String(64), index=True)
+    model: Mapped[str] = mapped_column(String(128))
+    in_tokens: Mapped[int] = mapped_column(default=0)
+    out_tokens: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+
+
+class LLMProviderState(Base):
+    """Dynamic operator state per provider: budget, kill switch, health."""
+
+    __tablename__ = "llm_provider_state"
+
+    provider: Mapped[str] = mapped_column(String(64), primary_key=True)
+    enabled_override: Mapped[bool | None] = mapped_column(nullable=True)
+    daily_token_budget: Mapped[int | None] = mapped_column(nullable=True)
+    fails: Mapped[int] = mapped_column(default=0)
+    cooldown_until: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

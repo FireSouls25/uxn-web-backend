@@ -49,6 +49,36 @@ Compile a file tree. Requires `X-API-Key` when `API_KEYS` is set.
 Re-fetch a stored job with its artifacts. Same auth as `/compile`.
 404 when unknown.
 
+## Agent routing (`/agent/*`, `/admin/llm/*`)
+
+Decides which provider/model serves agent traffic. Rule-based and
+logged; see `docs/operations.md` for the key story.
+
+| Call | Auth | Body → Result |
+|---|---|---|
+| `POST /agent/turn` | user, or guest (IP) | `{messages, tools}` → `{content, tool_calls, usage}`. **The client's only LLM door, and it names nothing**: no provider, no model, no key (extra fields are refused with 422). The server walks its ranked candidates until one answers; the caller only learns that it worked. 429 when over `AGENT_TURNS_PER_MINUTE`, 401 for guests when `AGENT_ALLOW_GUESTS=0`, 502 when every candidate failed, 503 when none was callable. |
+| `POST /agent/llm` | service | `{provider, model, messages, tools}` → same shape, for a pinned route (operator tooling / the Node agent service). Eligibility is re-checked, so it cannot bypass budgets, kill switches or cooldowns. |
+| `GET /agent/providers` | user or service | catalog: ids, models, tiers, `key_present` flags (never values) |
+| `POST /agent/route` | service | `{capability?, provider?, model?}` → ranked `candidates` + `excluded` with reasons, `chosen` first. **The dry run of the decision `/agent/turn` makes** — same `llm.plan`, so a preview and a real turn cannot disagree (health can still move between them; the logs are the record). A pin is re-validated, never trusted. |
+| `POST /agent/usage` | service | `{provider, model, in_tokens, out_tokens, ok?}` → ledger + breaker update |
+| `GET /admin/llm/status` | service | budgets, spend-today, fails, cooldowns |
+| `POST /admin/llm/provider` | service | `{provider, enabled?, daily_token_budget?}` → operator kill switch + caps |
+
+Ranking, in order: capability (tool calling) → enabled → key present →
+not cooling down → daily budget, then free → cheapest tier → quality →
+admin weight. The head of that list is the route; if it fails, the
+relay walks down the list.
+
+`/agent/turn` speaks OpenAI chat-completions upstream, so only
+providers with a `base_url` in `app/llm_registry.py` can answer today
+(anthropic and google have native APIs and are skipped, not faked).
+Rows marked `dynamic` have no fixed model list: `OLLAMA_MODEL` names
+the id automatic routing may use, and `LLM_DEV_BASE_URL` registers any
+OpenAI-compatible endpoint as a top-ranked free candidate — both read
+live, like the keys.
+Provider identity stays in the logs: user-facing errors are a status,
+and the UI maps it to its own language.
+
 ## Auth (`/auth/*`)
 
 Real user accounts in Postgres. Passwords are bcrypt hashes; access
@@ -78,8 +108,10 @@ IP) as a brute-force brake.
 | 401 | Missing or wrong `X-API-Key` (only when `API_KEYS` is set) |
 | 404 | Unknown job |
 | 409 | `etal_version` mismatch |
+| 422 | Unrecognized body (e.g. an agent turn naming a provider) |
 | 429 | Rate limit; `Retry-After` header carries the wait in seconds |
-| 503 | All compile slots busy |
+| 502 | Every ranked model failed (`/agent/turn` only) |
+| 503 | All compile slots busy, or no model was callable |
 | 504 | Compiler timed out |
 
 ## Language

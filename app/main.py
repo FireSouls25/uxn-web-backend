@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 import os
 import re
 import subprocess
@@ -13,6 +14,9 @@ from sqlalchemy.orm import Session
 
 from . import auth, compiler
 from . import limits
+from . import llm
+from . import llm_registry
+from . import llm_relay
 from .auth import TokenError
 from .compiler import COMING_SOON_ROWS, TARGET_ROWS
 from .config import settings
@@ -21,27 +25,57 @@ from .i18n import resolve_lang, t
 from .limits import RateLimited, ServerBusy
 from .models import CompileJob, RefreshToken, User
 from .schemas import (
+    Candidate,
     CompileRequest,
     CompileResponse,
     Diagnostic,
     HealthResponse,
     JobResponse,
     LoginRequest,
+    ProviderConfig,
+    ProviderStatus,
     RefreshRequest,
     RegisterRequest,
+    RelayRequest,
+    RelayResponse,
+    RouteRequest,
+    RouteResponse,
     TargetInfo,
     TargetsResponse,
     TokenPair,
+    TurnRequest,
+    TurnResponse,
+    UsageRequest,
     UserProfile,
     VersionResponse,
 )
 
 BACKEND_VERSION = "0.1.0"
+log = logging.getLogger("uxnweb")
 
 compiler_state: dict[str, str] = {"status": "unknown", "path": ""}
 
 
+def configure_logging() -> None:
+    """Uvicorn configures its own loggers and leaves the root logger
+    bare, so without this every `log.info` in the app — the routing
+    decision above all — is dropped before it reaches anyone. Touch
+    the root only when nothing else has claimed it (a real handler,
+    pytest's caplog), and never uvicorn's own."""
+    root = logging.getLogger()
+    if root.handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    root.addHandler(handler)
+    root.setLevel(getattr(logging, settings.log_level, logging.INFO))
+    # httpx narrates every upstream call at INFO, which doubles the
+    # relay's own lines. Its warnings and errors still come through.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+
 async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
+    configure_logging()
     try:
         compiler_state["path"] = compiler.ensure_compiler()
         compiler_state["status"] = "ok"
@@ -231,6 +265,216 @@ def targets() -> TargetsResponse:
         for row in COMING_SOON_ROWS
     ]
     return TargetsResponse(supported=supported, coming_soon=coming_soon)
+
+
+async def lang_of(request: Request) -> str:
+    return resolve_lang(None, request.headers.get("accept-language"))
+
+
+async def authorize_optional(
+    db: Session = Depends(get_db),
+    authorization: str | None = Header(default=None),
+    accept_language: str | None = Header(default=None),
+) -> User | None:
+    """Guests included: a missing token means anonymous, not rejected.
+    A *present* token must still be valid — a stale session should not
+    silently downgrade to guest. Anonymous callers are rate limited by
+    IP instead, and an operator can lock guests out entirely."""
+    if not (authorization and authorization.lower().startswith("bearer ")):
+        return None
+    lang = resolve_lang(None, accept_language)
+    try:
+        payload = auth.decode_token(authorization[7:].strip(), "access")
+    except TokenError:
+        raise HTTPException(status_code=401, detail=t("error.invalid_token", lang))
+    user = db.get(User, payload["sub"])
+    if user is None:
+        raise HTTPException(status_code=401, detail=t("error.invalid_token", lang))
+    return user
+
+
+def require_service_key(
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    accept_language: str | None = Header(default=None),
+) -> None:
+    """Operator-only routes: a configured service key is mandatory.
+    Unlike user auth, there is no open dev mode here — an unset
+    API_KEYS is a 503 telling the operator to configure it."""
+    lang = resolve_lang(None, accept_language)
+    keys = get_api_keys()
+    if not keys:
+        raise HTTPException(status_code=503, detail=t("error.service_locked", lang))
+    if x_api_key is None or x_api_key not in keys:
+        raise HTTPException(status_code=401, detail=t("error.unauthorized", lang))
+
+
+@app.get("/agent/providers", response_model=list[ProviderStatus])
+def agent_providers(
+    db: Session = Depends(get_db), _caller: User | None = Depends(authorize)
+) -> list[ProviderStatus]:
+    """Public catalog: names, models, tiers — never key material."""
+    out = []
+    for provider in llm_registry.providers():
+        state = llm.get_state(db, provider["id"])
+        enabled = state.enabled_override if state.enabled_override is not None else provider.get("enabled_default", True)
+        out.append(
+            ProviderStatus(
+                id=provider["id"],
+                enabled=bool(enabled),
+                key_present=llm.key_present(provider),
+                key_env=provider.get("key_env"),
+                daily_token_budget=state.daily_token_budget,
+                spent_today=llm.spent_today(db, provider["id"]),
+                fails=state.fails or 0,
+                cooldown_until=state.cooldown_until.isoformat() if state.cooldown_until else None,
+                models=[m["id"] for m in llm_registry.models_of(provider)]
+                or (["<any>"] if provider.get("dynamic") else []),
+            )
+        )
+    return out
+
+
+def _route_response(chosen: dict | None, ranked: dict) -> RouteResponse:
+    return RouteResponse(
+        chosen=Candidate(provider=chosen["provider"], model=chosen["model"], reason=chosen["reason"])
+        if chosen
+        else None,
+        candidates=[Candidate(provider=c["provider"], model=c["model"], reason=c["reason"]) for c in ranked["candidates"]],
+        excluded=[Candidate(provider=e["provider"], model=e.get("model"), reason=e["reason"]) for e in ranked["excluded"]],
+    )
+
+
+@app.post("/agent/route", response_model=RouteResponse)
+def agent_route(
+    body: RouteRequest, db: Session = Depends(get_db), _svc: None = Depends(require_service_key)
+) -> RouteResponse:
+    """The dry run of the exact decision `/agent/turn` makes: same
+    `llm.plan`, so the preview and the turn cannot disagree. An
+    optional pin is validated, never blind-trusted."""
+    plan = llm.plan(db, body.capability)
+    if not (body.provider or body.model):
+        return _route_response(plan["chosen"], plan)
+    provider = llm_registry.get_provider(body.provider or "")
+    if provider is None:
+        raise HTTPException(status_code=400, detail=f"unknown provider {body.provider}")
+    models = [m for m in llm_registry.models_of(provider) if not body.model or m["id"] == body.model]
+    if provider.get("dynamic") and body.model:
+        models = [{"id": body.model, "tools": True, "free": False, "tier": 1, "quality": 2}]
+    if not models:
+        raise HTTPException(status_code=400, detail=f"unknown model {body.model}")
+    pinned = [
+        c
+        for c in plan["candidates"]
+        if c["provider"] == provider["id"] and (not body.model or c["model"] == body.model)
+    ]
+    if not pinned:
+        reasons = [e["reason"] for e in plan["excluded"] if e["provider"] == provider["id"]]
+        raise HTTPException(status_code=400, detail=f"pinned route ineligible: {'; '.join(reasons) or 'filtered out'}")
+    chosen = dict(pinned[0])
+    chosen["reason"] = "pinned: " + chosen["reason"]
+    return _route_response(chosen, plan)
+
+
+@app.post("/agent/usage")
+def agent_usage(
+    body: UsageRequest, db: Session = Depends(get_db), _svc: None = Depends(require_service_key)
+) -> dict[str, str]:
+    if llm_registry.get_provider(body.provider) is None:
+        raise HTTPException(status_code=400, detail=f"unknown provider {body.provider}")
+    llm.record_usage(db, body.provider, body.model, body.in_tokens, body.out_tokens)
+    llm.report_result(db, body.provider, body.ok)
+    return {"status": "ok"}
+
+
+@app.post("/agent/turn", response_model=TurnResponse)
+def agent_turn(
+    body: TurnRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    caller: User | None = Depends(authorize_optional),
+) -> TurnResponse:
+    """The browser's only LLM door. It names no provider: routing,
+    keys, budgets and the breaker all stay here, and the caller learns
+    nothing beyond whether a model answered."""
+    if caller is None and not settings.agent_allow_guests:
+        raise HTTPException(status_code=401, detail=t("error.not_authenticated", lang_of(request)))
+    identity = caller.id if caller else (request.client.host if request.client else "unknown")
+    try:
+        limits.check_rate_limit(f"turn:{identity}", settings.agent_turns_per_minute)
+    except limits.RateLimited as e:
+        raise HTTPException(
+            status_code=429,
+            detail="too many agent turns, slow down",
+            headers={"Retry-After": str(e.retry_after)},
+        )
+    try:
+        result = llm_relay.turn(
+            db,
+            [m.model_dump(exclude_none=True) for m in body.messages],
+            [t.model_dump() for t in body.tools],
+        )
+    except llm_relay.RelayError as e:
+        log.warning("agent turn failed for %s: %s", identity, e)
+        raise HTTPException(status_code=502 if e.provider_down else 503, detail=str(e))
+    return TurnResponse(**result)
+
+
+@app.post("/agent/llm", response_model=RelayResponse)
+def agent_llm(
+    body: RelayRequest, db: Session = Depends(get_db), _caller: User | None = Depends(authorize)
+) -> RelayResponse:
+    """One LLM turn through the server-held key. The caller must be an
+    eligible route — rechecked here so direct calls can't bypass
+    budgets, kill switches, or cooldowns."""
+    ranked = llm.rank_models(db, "tools")
+    eligible = {(c["provider"], c["model"]) for c in ranked["candidates"]}
+    provider = llm_registry.get_provider(body.provider)
+    allowed = (body.provider, body.model) in eligible or (
+        provider is not None
+        and provider.get("dynamic")
+        and any(c["provider"] == body.provider for c in ranked["candidates"])
+    )
+    if not allowed:
+        reasons = [e["reason"] for e in ranked["excluded"] if e["provider"] == body.provider]
+        raise HTTPException(
+            status_code=400,
+            detail=f"route ineligible: {'; '.join(reasons) or 'filtered out'}",
+        )
+    try:
+        result = llm_relay.call(
+            db,
+            body.provider,
+            body.model,
+            [m.model_dump(exclude_none=True) for m in body.messages],
+            [t.model_dump() for t in body.tools],
+        )
+    except llm_relay.RelayError as e:
+        raise HTTPException(status_code=502 if e.provider_down else 400, detail=str(e))
+    return RelayResponse(**result)
+
+
+@app.get("/admin/llm/status", response_model=list[ProviderStatus])
+def admin_llm_status(
+    db: Session = Depends(get_db), _svc: None = Depends(require_service_key)
+) -> list[ProviderStatus]:
+    return agent_providers(db, None)
+
+
+@app.post("/admin/llm/provider")
+def admin_llm_provider(
+    body: ProviderConfig, db: Session = Depends(get_db), _svc: None = Depends(require_service_key)
+) -> dict[str, str]:
+    if llm_registry.get_provider(body.provider) is None:
+        raise HTTPException(status_code=400, detail=f"unknown provider {body.provider}")
+    state = llm.get_state(db, body.provider)
+    if body.enabled is not None:
+        state.enabled_override = body.enabled
+    if body.daily_token_budget is not None:
+        if body.daily_token_budget < 0:
+            raise HTTPException(status_code=400, detail="budget must be >= 0")
+        state.daily_token_budget = body.daily_token_budget
+    db.commit()
+    return {"status": "ok"}
 
 
 @app.post("/auth/register", response_model=TokenPair, status_code=201)

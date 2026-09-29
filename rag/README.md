@@ -8,4 +8,5 @@ where they become the Pi system prompt (`src/lib/agent/pi.ts`).
 * `etal.md` — emitter-subset language cheat sheet.
 * `varvara.md` — hardware facts verified against `uxn2/src/uxn2.c`.
 * `examples.md` — chess two-layer pattern + emitter conventions.
-* `agent-contract.md` — pending server-side endpoint design.
+* `agent-contract.md` — the browser↔relay contract for `POST /agent/turn`
+  and how the server picks the model.

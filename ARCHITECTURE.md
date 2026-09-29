@@ -37,6 +37,38 @@ tree, runs the pinned compiler, and returns build artifacts.
   (ETAL `import`/`file()` resolve file-relative; drifblim path
   buffers are ~63B, so keep names short and bare).
 
+## Agent routing (`/agent/*`)
+
+The frontend runs the agent *loop*; this service owns the *model*.
+`POST /agent/turn` takes a transcript and a tool schema, picks a
+route, calls the provider with a server-held key and returns the
+reply. The client cannot name a provider, a model or a key — the
+request model forbids extra fields, so a crafted body cannot smuggle
+a route in.
+
+* `llm_registry.py` — what exists: base URL, key env var, cost tier,
+  quality, admin weight, tool-calling support. Static rows, plus
+  dynamic ones (a local model server) whose model id comes from the
+  environment on every call.
+* `llm.py` — the decision. `llm.plan()` filters (tool support →
+  enabled → key → cooldown → budget), ranks what survives (free →
+  tier → quality → weight) and logs the head. Every exclusion carries
+  a reason, so the catalog can always explain itself. Same function
+  answers the operator preview (`POST /agent/route`) and the real
+  turn, so a preview cannot lie.
+* `llm_relay.py` — the walk. The head answers; on failure the next
+  candidate does, tripping the breaker on transport errors, 429 and
+  5xx. Rows with no OpenAI-compatible endpoint are skipped, not
+  mistranslated. Usage lands in a token ledger (never dollars).
+* Budgets, kill switches and cooldowns are per provider and live in
+  Postgres; keys stay in the environment. Provider identity appears in
+  logs and service endpoints, never in a turn response.
+
+Because routing is a shared, metered resource, the browser side also
+carries a per-caller turn rate limit and an optional
+`AGENT_ALLOW_GUESTS=0` switch. `docs/operations.md` has the key and
+log story; `rag/agent-contract.md` has the wire contract.
+
 ## Execution model
 
 1. Validate request (paths, total size cap, extension allowlist:
@@ -73,6 +105,8 @@ v1 (this milestone):
   `Retry-After`, compile slots with 503, CORS, security headers
 * [x] Dockerfile with pinned compiler release (hash-verified GitHub
   asset, baked at build; `ARG ETAL_VERSION`)
+* [x] Agent relay with automatic model selection: server-held keys,
+  ranked routes, per-turn fallback, breaker and token budgets
 
 v2 (deferred):
 

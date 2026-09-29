@@ -137,3 +137,28 @@ def test_server_busy(monkeypatch):
     r = _compile(files={"main.ux": other})
     assert r.status_code == 503
     assert r.json()["detail"]
+
+
+def test_app_logs_reach_a_handler():
+    """Uvicorn leaves the root logger bare: without configure_logging
+    the routing decisions the operations doc promises never arrive."""
+    import logging
+
+    from app.main import configure_logging
+
+    root = logging.getLogger()
+    saved_handlers, saved_level = list(root.handlers), root.level
+    try:
+        root.handlers = []
+        root.setLevel(logging.WARNING)
+        configure_logging()
+        assert root.handlers, "no handler installed"
+        assert root.level == logging.INFO
+        # httpx narrates every upstream call; the relay says it better.
+        assert logging.getLogger("httpx").level == logging.WARNING
+        # Already configured: hands off, so pytest's caplog survives.
+        before = list(root.handlers)
+        configure_logging()
+        assert root.handlers == before
+    finally:
+        root.handlers, root.level = saved_handlers, saved_level
