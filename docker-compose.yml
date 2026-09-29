@@ -6,6 +6,10 @@ services:
       POSTGRES_PASSWORD: uxn
       POSTGRES_DB: uxnweb
     volumes:
+      # PGDATA is version-locked: starting any OTHER postgres major
+      # (e.g. :17) against this volume poisons it and :16 will refuse
+      # to boot (FATAL: incompatible). Use a different volume/project
+      # for other versions; recovery is `down -v` (dev data only).
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U uxn"]
