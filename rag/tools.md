@@ -14,9 +14,11 @@ Every tool validates like the UI; the backend compiler is final arbiter.
 
 ## Sprites & objects
 
-* `create_sprite {name, pixels?}` — 8×8 library sprite. Pixels are 64
-  indices 0–3 (**Uxn 2bpp hardware limit**); index 0 paints palette 0
-  (opaque background, not transparency).
+* `create_sprite {name, pixels?, w?, h?}` — library sprite, 1×1 to
+  4×4 tiles of 8×8 (bigger art = consecutive tiles, drawn tile by
+  tile). Pixels are 64·w·h indices 0–3 (**Uxn 2bpp hardware limit**),
+  tile-major row-major; index 0 paints palette 0 (opaque background,
+  not transparency).
 * `put_on_scene {sprite, scene?, x?, y?, kind?, name?}` — kinds:
   `player` (≤1/scene, 0 allowed), `static`, `movable` (solid+pushable).
 * `move_object {object, x, y}` — absolute pixels, clamped.

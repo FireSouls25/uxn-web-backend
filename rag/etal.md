@@ -6,7 +6,7 @@ Typed DSL compiling to Uxntal. Every expression leaves exactly
 ## Devices (declared pages, typed ports)
 
 ```ux
-device Screen 32 { vector: 2  width: 2  height: 2  x: 2  y: 2  addr: 2  pixel: 1  sprite: 1 }
+device Screen 32 { vector: 2  width: 2  height: 2  auto: 1  pad: 1  x: 2  y: 2  addr: 2  pixel: 1  sprite: 1 }
 device Controller 128 { vector: 2  button: 1  key: 1 }
 device Mouse 144 { vector: 2  x: 2  y: 2  state: 1 }
 device Audio0 48 { vector: 2  addr: 2  length: 2  volume: 1  adsr: 2  pitch: 1 }
@@ -32,7 +32,16 @@ literals plus trailing `_`. `for i in 0..N` (u16), `while`,
 
 Globals live in 256B zero-page. `buffer buf[N]: u8|u16;` is main RAM.
 `data tile = [bytes];` is a ROM blob; `&tile` is its address.
-Fixed 8×8 2bpp sprites = 16 planar bytes (channel one, then two).
+One 8×8 2bpp tile = 16 planar bytes (channel one, then two);
+multi-tile sprites concatenate tiles row-major (tile (tx,ty) at blob
+offset (ty·w+tx)·16), drawn with repeated addr+sprite writes.
+
+Assembler budget (measured, etal `-r`): a single `fn`/`event` holds
+~1200 label references before `References exceeded` fails the build
+(1200 OK, 1400 fails). Generated code keeps every function far below
+that: shared loops over slots, per-scene setup/draw stay linear in
+leaf count with few refs per leaf — never unroll per-leaf code
+without counting.
 
 ## Input doctrine (hardware facts)
 

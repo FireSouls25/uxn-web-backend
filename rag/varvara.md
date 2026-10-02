@@ -2,8 +2,14 @@
 
 ## Screen
 
-* 8px-wide sprites; height = bytes ÷ (1 or 2 per row). Sprite byte:
-  bit7 = 2bpp, bit6 = layer, bits5-4 = flips, low nibble = blend.
+* One sprite-port write draws exactly one 8×8 tile (2bpp = 16
+  bytes: 8 channel-one rows, then 8 channel-two rows). Bigger art =
+  consecutive tiles: the Screen/auto port draws N extra tiles in one
+  write (length nibble, row/col direction, auto-addr advances 8 or 16
+  bytes per tile) — or just repeat addr+sprite writes per tile, which
+  is what our emitter does (no auto-port dependency, portable to
+  every emulator). Sprite byte: bit7 = 2bpp, bit6 = layer, bits5-4 =
+  flips, low nibble = blend.
 * Blend LUT row 1 is identity `{0,1,2,3}` and opaque — so mode **129**
   (0x81) draws true 4-color 2bpp sprites. Index 0 is NOT transparent
   there; it paints palette 0. (Blend 0 skips index 0 but collapses
