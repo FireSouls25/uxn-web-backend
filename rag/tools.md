@@ -43,6 +43,32 @@ Every tool validates like the UI; the backend compiler is final arbiter.
   canvas and validation all see effective values. Physics rules,
   player caps and anim-size matches check resolved leaves.
 
+## Events & blocks (visual rules that compile to ETAL)
+
+* `add_event {def|object, trigger, key?, target?}` — loop moments:
+  `create` (scene enter), `step` (every frame), `destroy`,
+  `key` (named input), `collide` (overlap vs
+  `any|solid|player|movable|def:<id>`), `click` (press on it),
+  `alarm` (slot countdown hits 0). One event per trigger+key/target.
+  Defs own their events; instances run them (no local event lists).
+* `add_block {def|object, event, op, ...}` — one action = fixed ETAL:
+  `move {dx,dy}` (pixels, clamped), `set_pos {x,y}`,
+  `play {voice 0-3, note 0-107, vol 0-255}` (one-shot SFX reusing the
+  boot sample), `goto {scene}`, `destroy` (self; runs the destroy
+  event first), `wait {ticks 1-255}` (arms the alarm event — a
+  waiter without one is rejected, single timer per object).
+* `preview_event {def|object, event}` — the exact lines the emitter
+  writes (same function; preview and build cannot disagree).
+  `delete_event` / `delete_block {index}` for iteration.
+* Frame order: input latch → drive → anims → scene transitions →
+  object key → object click → step (+ legacy tick text, blocks
+  first) → collide → alarm → custom/frameCode → draw. Collide is
+  level-triggered while overlapping; destroyed leaves go quiet
+  (draw, drive, collide and handlers all check the alive bit).
+  Collide pairs unroll per scene (max 48 — narrow targets or split
+  the scene); every event otherwise lowers to a small per-leaf fn,
+  so generated functions stay far under the assembler budget.
+
 ## Rules as code
 
 * `script_object {object, code}` — ETAL statements wrapped as
