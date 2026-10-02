@@ -5,7 +5,7 @@ Every tool validates like the UI; the backend compiler is final arbiter.
 
 ## Project & scenes
 
-* `describe()` — snapshot `{project, scene, scenes, sprites, anims}`. Start here.
+* `describe()` — snapshot `{project, scene, scenes, sprites, defs, anims}`. Start here.
 * `create_project {name}` / `open_project {id}` — fresh project / switch.
 * `create_scene {}` — empty scene, switches to it.
 * `nest_scene {scene, into?, x?, y?, name?}` — instance a subscene at an
@@ -26,6 +26,22 @@ Every tool validates like the UI; the backend compiler is final arbiter.
 * `delete_node {index, scene?}` / `reorder_nodes {from, to}` /
   `move_node {from_scene, from_index, to_scene}` — draw order follows
   list order; branch moves are cycle-guarded.
+
+## Object templates (Object ≠ Sprite ≠ Instance)
+
+* `create_object_def {name, sprite?, kind?, anim?, tick?}` — behavior
+  template: default art, kind (`player` ≤1/scene, `static`,
+  `movable` = solid+pushable), animation, tick script. Editing the
+  def updates every instance at once.
+* `place_instance {def, scene?, x?, y?, name?}` — stamp an instance;
+  position is always instance state, other fields override per
+  instance (explicit values win, even `false`).
+* `extract_object {object}` — top-level inline leaf becomes a
+  template + instance pair (id and position stay, the rest moves
+  into the new def). Prefer this over rebuilding shared art by hand.
+* Leaves resolve at flatten time (local over def), so the emitter,
+  canvas and validation all see effective values. Physics rules,
+  player caps and anim-size matches check resolved leaves.
 
 ## Rules as code
 
