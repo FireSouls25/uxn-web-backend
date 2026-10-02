@@ -1,6 +1,7 @@
 """Compile service: receive a file tree, run etal, return artifacts."""
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 import os
@@ -20,7 +21,7 @@ from . import llm_relay
 from .auth import TokenError
 from .compiler import COMING_SOON_ROWS, TARGET_ROWS
 from .config import settings
-from .db import Base, engine, get_db
+from .db import ensure_schema, get_db
 from .i18n import resolve_lang, t
 from .limits import RateLimited, ServerBusy
 from .models import CompileJob, RefreshToken, User
@@ -54,6 +55,7 @@ BACKEND_VERSION = "0.1.0"
 log = logging.getLogger("uxnweb")
 
 compiler_state: dict[str, str] = {"status": "unknown", "path": ""}
+db_state: dict[str, str] = {"status": "unknown"}
 
 
 def configure_logging() -> None:
@@ -74,14 +76,55 @@ def configure_logging() -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
+def warn_on_insecure_settings() -> None:
+    """Say the dangerous thing out loud, once, at boot. Dev defaults
+    are deliberately open (no API_KEYS, a published JWT secret); on a
+    public deployment those are not dev any more."""
+    if not get_api_keys():
+        log.warning(
+            "API_KEYS is empty: /compile, /agent/turn and the auth "
+            "endpoints are open to anyone who finds this service"
+        )
+    if settings.jwt_secret == "dev-only-secret-change-me":
+        log.warning("JWT_SECRET is the shipped default: every token is forgeable — set a random one")
+    if not any(o.startswith("https://") for o in settings.cors_origins):
+        log.warning("CORS_ORIGINS has no https origin: the browser will refuse the deployed frontend")
+
+
+async def _keep_trying_schema() -> None:
+    """A cold database must not need a restart: keep creating the
+    schema after the process is already serving, until it lands."""
+    while True:
+        await asyncio.sleep(5)
+        if await asyncio.to_thread(ensure_schema, 20, 1.5):
+            db_state["status"] = "ok"
+            log.info("database ready — schema is in place")
+            return
+
+
 async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
     configure_logging()
+    warn_on_insecure_settings()
     try:
         compiler_state["path"] = compiler.ensure_compiler()
         compiler_state["status"] = "ok"
     except FileNotFoundError as e:
         compiler_state["status"] = f"missing: {e}"
-    yield
+    # A managed database routinely is not listening when the web
+    # process starts. Wait a few seconds, then serve anyway and keep
+    # retrying in the background: the port opens either way, which is
+    # what a platform health check is waiting for.
+    task: asyncio.Task | None = None
+    if not await asyncio.to_thread(ensure_schema, 6, 1.0):
+        db_state["status"] = "unavailable"
+        log.error("no database yet: serving /health, but requests fail until it appears")
+        task = asyncio.create_task(_keep_trying_schema())
+    app.state.schema_task = task
+    try:
+        yield
+    finally:
+        if task is not None:
+            task.cancel()
 
 
 app = FastAPI(
@@ -95,7 +138,9 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
-Base.metadata.create_all(bind=engine)
+# Best effort at import (tests rely on the schema being there right
+# away); the lifespan is what actually waits for a cold database.
+ensure_schema(attempts=3, delay=0.5)
 
 
 @app.middleware("http")
@@ -230,7 +275,17 @@ def health() -> HealthResponse:
             compiler_state["status"] = "ok"
         except FileNotFoundError as e:
             compiler_state["status"] = f"missing: {e}"
-    return HealthResponse(status="ok", compiler=compiler_state["status"])
+    if db_state["status"] != "ok":
+        # Reached when the process skipped the lifespan (tests) or
+        # when the database came up after it: one cheap attempt, so
+        # the health check reports the truth instead of a stale "no".
+        if ensure_schema(attempts=1):
+            db_state["status"] = "ok"
+    return HealthResponse(
+        status="ok",
+        compiler=compiler_state["status"],
+        database=db_state["status"],
+    )
 
 
 @app.get("/version", response_model=VersionResponse)

@@ -105,16 +105,24 @@ def rank_models(db: Session, capability: str = "tools") -> dict:
                     "model": model["id"],
                     "free": bool(model.get("free", False)),
                     "tier": int(model.get("tier", 2)),
+                    "local": bool(provider.get("local", False)),
                     "quality": int(model.get("quality", 2)),
                     "weight": int(provider.get("weight", 50)),
                 }
             )
-    # Free first, then cheapest tier, then quality, then admin weight.
-    # Sort is stable, so two models that tie keep registry order.
-    candidates.sort(key=lambda c: (not c["free"], c["tier"], -c["quality"], -c["weight"]))
+    # Free first, then cheapest tier, then your own hardware before
+    # anyone else's cloud, then quality, then admin weight.
+    # The `local` step is what keeps the promise in the registry
+    # ("self-hosting wins when configured"): without it, a hosted
+    # quality-3 free model would outrank the dev mock or an ollama
+    # row (both quality 2), and a magic weight would be the only
+    # thing standing between them. Sort is stable, so two models
+    # that tie on everything keep registry order.
+    candidates.sort(key=lambda c: (not c["free"], c["tier"], not c["local"], -c["quality"], -c["weight"]))
     for i, c in enumerate(candidates):
         c["reason"] = (
             f"rank {i + 1}: {'free tier' if c['free'] else f'tier {c['tier']}'}"
+            f"{', local' if c['local'] else ''}"
             f", quality {c['quality']}, weight {c['weight']}"
         )
     return {"candidates": candidates, "excluded": excluded}

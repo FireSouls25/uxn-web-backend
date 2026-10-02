@@ -27,7 +27,7 @@ def _clean(monkeypatch):
     limits.reset_limits()
     monkeypatch.setenv("API_KEYS", "operator-secret")
     monkeypatch.setenv("GROQ_API_KEY", "gsk-test")
-    for var in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "CEREBRAS_API_KEY"):
+    for var in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "CEREBRAS_API_KEY", "OPENROUTER_API_KEY"):
         monkeypatch.delenv(var, raising=False)
     # Resolved from the environment on every routing decision: clear
     # the escape hatches so a developer's shell cannot add a candidate.
@@ -296,7 +296,7 @@ def test_turn_logs_the_chosen_route(monkeypatch, caplog):
 
 def test_turn_serves_a_local_model_server_first(monkeypatch, caplog):
     """LLM_DEV_BASE_URL is a full candidate, not a pinned escape
-    hatch: free tier plus top weight, it answers before any host."""
+    hatch: free tier and `local`, it answers before any host."""
     seen: list[str] = []
 
     def fake_post(url, headers=None, json=None, timeout=None):
@@ -312,10 +312,31 @@ def test_turn_serves_a_local_model_server_first(monkeypatch, caplog):
     assert "answered by dev-local/local" in caplog.text
 
 
+def test_turn_serves_the_only_keyed_provider(monkeypatch, caplog):
+    """The production shape: one key in the environment (an
+    aggregator's), a free model picked, and the caller learns nothing
+    beyond the reply."""
+    seen: list[dict] = []
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        seen.append({"url": url, "auth": (headers or {}).get("Authorization"), "model": json["model"]})
+        return StubResp(payload=ok_payload())
+
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setattr(relay.httpx, "post", fake_post)
+    with caplog.at_level("INFO", logger="uxnweb.relay"):
+        r = client.post("/agent/turn", json={"messages": [{"role": "user", "content": "build a maze"}]})
+    assert r.status_code == 200, r.text
+    assert len(seen) == 1
+    assert seen[0]["url"] == "https://openrouter.ai/api/v1/chat/completions"
+    assert seen[0]["auth"] == "Bearer sk-or-test"  # the key never leaves the server
+    assert seen[0]["model"].endswith(":free")
+    assert "sk-or-test" not in r.text  # and never reaches the client
+    assert "relay turn answered by openrouter/" in caplog.text
+
+
 def test_turn_skips_ranked_but_uncallable_providers(monkeypatch, caplog):
-    """anthropic ranks fine but has no OpenAI-compatible endpoint: it
-    is skipped (and said so), never called, and skipping is not
-    failing — 'nothing to call' stays a 503, not a 502."""
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "a")
     monkeypatch.setattr(relay.httpx, "post", lambda *a, **kw: StubResp(payload=ok_payload()))

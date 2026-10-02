@@ -58,6 +58,7 @@ class VersionResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     compiler: str
+    database: str = "unknown"
 
 
 class JobResponse(CompileResponse):

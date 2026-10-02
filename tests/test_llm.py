@@ -56,6 +56,17 @@ def test_registry_sane():
             assert m["tier"] in (0, 1, 2, 3)
 
 
+def test_free_means_the_free_suffix():
+    """On an aggregator a model is free because of its id, not
+    because we decided so. If a `:free` id is edited to something
+    paid, `free: true` would quietly spend money — so the two are
+    pinned together in both directions."""
+    aggregator = llm_registry.get_provider("openrouter")
+    for m in llm_registry.models_of(aggregator):
+        assert m["free"] == m["id"].endswith(":free"), m["id"]
+        assert m["tools"] is True, m["id"]  # the agent cannot run without tools
+
+
 def test_no_keys_means_nothing_keyed_eligible():
     db = SessionLocal()
     try:
@@ -195,9 +206,11 @@ def test_preview_is_the_turn_decision(monkeypatch):
 
 def test_local_model_wins_when_its_id_is_set(monkeypatch):
     """A `dynamic` row has no fixed model list, but automatic routing
-    still needs one: OLLAMA_MODEL names it, and being free with the
-    top weight it outranks every hosted provider."""
+    still needs one: OLLAMA_MODEL names it, and `local: true` puts it
+    ahead of every hosted model of the same tier — even a hosted free
+    model with a higher quality number."""
     monkeypatch.setenv("GROQ_API_KEY", "g")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
     monkeypatch.setenv("OLLAMA_MODEL", "llama3.1:latest")
     db = SessionLocal()
     try:
@@ -207,10 +220,25 @@ def test_local_model_wins_when_its_id_is_set(monkeypatch):
         db.commit()
         chosen = llm.choose(db)
         assert (chosen["provider"], chosen["model"]) == ("ollama", "llama3.1:latest")
+        assert "local" in chosen["reason"]
         preview = client.post("/agent/route", json={}, headers=SVC).json()
         assert preview["chosen"]["model"] == "llama3.1:latest"
         catalog = client.get("/agent/providers", headers=SVC).json()
         assert "llama3.1:latest" in next(p for p in catalog if p["id"] == "ollama")["models"]
+    finally:
+        db.close()
+
+
+def test_dev_endpoint_answers_before_hosted_free_models(monkeypatch):
+    """The escape hatch is `local`, not just heavy: a dev endpoint
+    outranks a hosted free model even when the hosted one claims the
+    higher quality."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setenv("LLM_DEV_BASE_URL", "http://127.0.0.1:11500/v1")
+    db = SessionLocal()
+    try:
+        chosen = llm.choose(db)
+        assert (chosen["provider"], chosen["model"]) == ("dev-local", "local")
     finally:
         db.close()
 
@@ -245,3 +273,53 @@ def test_dev_endpoint_registers_live(monkeypatch):
     assert [m["id"] for m in llm_registry.models_of(row)] == ["qwen2.5-coder"]
     monkeypatch.delenv("LLM_DEV_BASE_URL")
     assert llm_registry.get_provider("dev-local") is None
+
+
+def test_one_key_is_enough_and_free_wins(monkeypatch):
+    """The whole promise of the selector: a key in the environment is
+    the only thing an operator does, and free models are what get
+    picked — ahead of every paid model of every other provider."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    db = SessionLocal()
+    try:
+        ranked = llm.rank_models(db)
+        assert {c["provider"] for c in ranked["candidates"]} == {"openrouter"}
+        free = [c for c in ranked["candidates"] if c["free"]]
+        assert free, "no free model available to the one keyed provider"
+        # Free ids come first; the paid fallbacks are still ranked,
+        # just behind them.
+        assert ranked["candidates"][: len(free)] == free
+        assert llm.choose(db)["model"].endswith(":free")
+    finally:
+        db.close()
+
+
+def test_free_beats_a_paid_key(monkeypatch):
+    """A free model anywhere outranks a paid one, whatever the
+    weights say: the tier is the whole point of the ranking."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-paid")
+    db = SessionLocal()
+    try:
+        ranked = llm.rank_models(db)
+        assert ranked["candidates"][0]["provider"] == "openrouter"
+        first_paid = next(i for i, c in enumerate(ranked["candidates"]) if not c["free"])
+        assert all(c["free"] for c in ranked["candidates"][:first_paid])
+    finally:
+        db.close()
+
+
+def test_keyless_providers_stay_out(monkeypatch):
+    """No key, no candidate — and the reason names the variable, so
+    adding the key is the fix an operator can read off the log."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setenv("GROQ_API_KEY", "gsk")
+    db = SessionLocal()
+    try:
+        ranked = llm.rank_models(db)
+        providers = {c["provider"] for c in ranked["candidates"]}
+        assert "openai" not in providers and "anthropic" not in providers
+        reason = next(e["reason"] for e in ranked["excluded"] if e["provider"] == "openai")
+        assert reason == "no key (OPENAI_API_KEY)"
+    finally:
+        db.close()

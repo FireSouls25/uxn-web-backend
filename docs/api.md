@@ -65,17 +65,18 @@ logged; see `docs/operations.md` for the key story.
 | `POST /admin/llm/provider` | service | `{provider, enabled?, daily_token_budget?}` → operator kill switch + caps |
 
 Ranking, in order: capability (tool calling) → enabled → key present →
-not cooling down → daily budget, then free → cheapest tier → quality →
-admin weight. The head of that list is the route; if it fails, the
-relay walks down the list.
+not cooling down → daily budget, then free → cheapest tier → your own
+hardware first (`local`) → quality → admin weight. The head of that
+list is the route; if it fails, the relay walks down the list.
 
 `/agent/turn` speaks OpenAI chat-completions upstream, so only
 providers with a `base_url` in `app/llm_registry.py` can answer today
 (anthropic and google have native APIs and are skipped, not faked).
 Rows marked `dynamic` have no fixed model list: `OLLAMA_MODEL` names
 the id automatic routing may use, and `LLM_DEV_BASE_URL` registers any
-OpenAI-compatible endpoint as a top-ranked free candidate — both read
-live, like the keys.
+OpenAI-compatible endpoint as a local free candidate — one that
+answers before any hosted model at the same tier. Both are read live,
+like the keys.
 Provider identity stays in the logs: user-facing errors are a status,
 and the UI maps it to its own language.
 

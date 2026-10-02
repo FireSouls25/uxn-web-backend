@@ -28,4 +28,11 @@ RUN COMPILER_DIR=/opt/etal ./scripts/fetch-compiler.sh "release:${ETAL_VERSION}"
     && /opt/etal/etal --list-targets
 
 EXPOSE 8000
-CMD ["/srv/.venv/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# Render (and most PaaS) injects $PORT and expects the process to bind
+# it; --forwarded-allow-ips trusts the proxy's X-Forwarded-For, which
+# is where the real client IP lives. Without it every guest would
+# share one rate-limit bucket behind the proxy. One worker on purpose:
+# quotas and the compile slots are in-process (see docs/operations.md).
+ENV FORWARDED_ALLOW_IPS=*
+CMD ["/bin/sh", "-c", "exec /srv/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips=${FORWARDED_ALLOW_IPS} --no-server-header"]

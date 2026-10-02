@@ -37,6 +37,7 @@ def test_health():
     body = client.get("/health").json()
     assert body["status"] == "ok"
     assert body["compiler"] == "ok"
+    assert body["database"] == "ok"
 
 
 def test_targets():
@@ -162,3 +163,32 @@ def test_app_logs_reach_a_handler():
         assert root.handlers == before
     finally:
         root.handlers, root.level = saved_handlers, saved_level
+
+
+def test_schema_creation_waits_for_a_cold_database(monkeypatch):
+    """A managed database is routinely not listening when the web
+    process starts. Failing fast turns a 20-second wait into a crash
+    loop; giving up silently turns it into 500s nobody explains."""
+    from app import db as dbmod
+
+    calls: list[int] = []
+
+    def flaky(*a, **kw):
+        calls.append(1)
+        if len(calls) < 3:
+            raise RuntimeError("connection refused")
+        return None
+
+    monkeypatch.setattr(dbmod.Base.metadata, "create_all", flaky)
+    assert dbmod.ensure_schema(attempts=5, delay=0) is True
+    assert len(calls) == 3  # two refusals, then the schema is in
+
+    calls.clear()
+
+    def always_down(*a, **kw):
+        calls.append(1)
+        raise RuntimeError("connection refused")
+
+    monkeypatch.setattr(dbmod.Base.metadata, "create_all", always_down)
+    assert dbmod.ensure_schema(attempts=2, delay=0) is False
+    assert len(calls) == 2  # it gives up loudly, and reports it

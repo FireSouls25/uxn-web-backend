@@ -26,8 +26,9 @@ influence it, and it runs per turn. Hard filters first, each one
 recorded in `excluded` with its reason: capability (tool calling) →
 operator kill switch → key present → breaker cooldown → daily token
 budget. Survivors are sorted free-first, then cheapest tier, then
-quality, then admin weight (ties keep registry order), and the head
-is the route for this turn.
+your own hardware before anyone else's cloud (`local`), then quality,
+then admin weight (ties keep registry order), and the head is the
+route for this turn.
 
 If it does not answer, the relay moves to the next candidate in that
 order: transport errors, 429 and 5xx trip the breaker, a bad request
@@ -43,8 +44,9 @@ the service endpoints; `/agent/turn` answers with a status only.
 Providers with `dynamic: true` (a local model server) have no fixed
 model list: `OLLAMA_MODEL` names the id automatic routing may use, and
 `LLM_DEV_BASE_URL` registers any OpenAI-compatible endpoint as a
-top-ranked free candidate. Both are read from the environment on every
-call, like the keys.
+local free candidate. Both are read from the environment on every
+call, like the keys — and `local` is what puts them ahead of any
+hosted model at the same tier, not the admin weight.
 
 ## Endpoint
 

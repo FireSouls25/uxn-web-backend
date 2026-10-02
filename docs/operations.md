@@ -9,11 +9,12 @@
 | `DATABASE_URL` | `postgresql+psycopg://uxn:uxn@localhost:5432/uxnweb` | Postgres (sqlite URL works for tests) |
 | `API_KEYS` | *(empty = open)* | Comma-separated service keys for `X-API-Key`. Empty disables service auth — dev only |
 | `<PROVIDER>_API_KEY` | *(empty = excluded)* | One var per LLM provider (`GROQ_API_KEY`, `OPENAI_API_KEY`, … — see `app/llm_registry.py` for the full map). Read live from the environment on every routing decision. |
-| `OLLAMA_MODEL` | *(empty = not routable)* | Model id for the local `ollama` row. Set it, then `POST /admin/llm/provider {"provider":"ollama","enabled":true}`, and a local server joins automatic routing (free tier, top weight — it answers first). |
-| `LLM_DEV_BASE_URL` / `LLM_DEV_MODEL` / `LLM_DEV_KEY_ENV` | *(unset = absent)* | Escape hatch: register any OpenAI-compatible endpoint (local server, self-hosted gateway, `scripts/mock_llm.py`) as a top-ranked free candidate. `LLM_DEV_MODEL` defaults to `local`. Read live, like the keys. |
+| `OLLAMA_MODEL` | *(empty = not routable)* | Model id for the local `ollama` row. Set it, then `POST /admin/llm/provider {"provider":"ollama","enabled":true}`, and a local server joins automatic routing (free tier, `local` flag — it answers before any hosted model of the same tier). |
+| `LLM_DEV_BASE_URL` / `LLM_DEV_MODEL` / `LLM_DEV_KEY_ENV` | *(unset = absent)* | Escape hatch: register any OpenAI-compatible endpoint (local server, self-hosted gateway, `scripts/mock_llm.py`) as a local free candidate — it answers before any hosted model. `LLM_DEV_MODEL` defaults to `local`. Read live, like the keys. |
 | `LLM_TIMEOUT` | `120` | Seconds per upstream call before the turn fails and the breaker trips |
 | `AGENT_TURNS_PER_MINUTE` | `20` | Agent turns per user id (or guest IP); `0` disables the limit |
 | `AGENT_ALLOW_GUESTS` | `1` | `0` requires an account to use the agent |
+| `PORT` | `8000` | Set by the platform (Render); the image binds whatever it says. Never set `WEB_CONCURRENCY`: quotas are per worker. |
 | `ETAL_SOURCE` | `local` | Compiler strategy: `local` (dev checkout) or `release:<tag>` (pinned GitHub release, hash-verified) |
 | `COMPILER_DIR` | `/opt/etal` | Unpack dir for release fetches; also the fallback lookup for `etal` |
 | `JWT_SECRET` | `dev-only-secret-change-me` | Signing secret. **Set a random value in production** (all tokens forgeable otherwise) |
@@ -86,6 +87,7 @@ preview call it:
   support → operator kill switch → key present → breaker cooldown →
   daily token budget;
 * **rank** of the survivors: free tier, then cheapest tier, then
+  your own hardware before anyone else's cloud (`local` flag), then
   quality, then admin weight (ties keep registry order);
 * **walk**: the head answers the turn; on a transport error, 429 or
   5xx the breaker trips and the relay tries the next candidate. A
@@ -94,6 +96,16 @@ preview call it:
   skipped without being called, and skipping never trips a breaker;
 * **outcome**: 502 when every candidate failed, 503 when none of them
   was callable, and the user sees a status, never a provider name.
+
+One key is enough: with only `OPENROUTER_API_KEY` set, the whole
+candidate list is that provider's models, and its `:free` ids (free
+tier, so ahead of every paid model anywhere) are what answer. The
+registry is a snapshot of that free lineup — refresh it with
+`uv run python scripts/refresh_free_models.py` when replies start
+looking dumber than they should. The one thing that outranks a free
+hosted model is a free model on your own hardware: an enabled local
+row (ollama, or the `LLM_DEV_*` escape hatch) answers first at the
+same tier, whatever the quality numbers say.
 
 Operator controls: `POST /admin/llm/provider` (enable/disable, daily
 token budget). Budgets count tokens, never dollars — no invented price
@@ -125,8 +137,8 @@ uv run python scripts/mock_llm.py            # http://127.0.0.1:11500/v1
 LLM_DEV_BASE_URL=http://127.0.0.1:11500/v1 uv run uvicorn app.main:app
 ```
 
-The dev endpoint is free tier with the top weight, so it answers
-before any hosted provider — no key, no network, no spend.
+The dev endpoint is free tier and `local`, so it answers before
+any hosted provider — no key, no network, no spend.
 
 ### Who reaches the model
 
@@ -156,6 +168,11 @@ to debug a route, read the logs or `GET /admin/llm/status`, not the
 turn response.
 
 ## Security model
+* Open dev defaults are loud, not silent: at boot the service warns
+  when `API_KEYS` is empty (everything open), `JWT_SECRET` is the
+  shipped one (tokens forgeable) or `CORS_ORIGINS` has no https
+  origin (the deployed frontend will be refused). Fix them in the
+  platform's environment, not in code.
 * The compiler runs as a subprocess in a fresh tempdir per job
   (removed on all paths), with no network, a wall-clock timeout, and
   strict path/extension/size validation before anything touches disk.
@@ -173,5 +190,10 @@ turn response.
 
 Tables are created with `create_all` — there are no migrations yet.
 A schema change (e.g. a new `compile_jobs` column) requires a fresh
-database: `docker compose down -v` recreates `pgdata`. Alembic before
-any production data matters.
+database: `docker compose down -v` recreates `pgdata`, and on Render a
+new Postgres does the same. Alembic before any production data
+matters.
+
+## Deploy
+
+Render (backend) + Vercel (frontend), step by step, is `docs/deploy.md`.

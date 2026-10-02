@@ -4,8 +4,8 @@ Not part of the app: with
 `LLM_DEV_BASE_URL=http://127.0.0.1:11500/v1 uv run uvicorn app.main:app`
 the agent routes here, so the whole path (frontend → /agent/turn →
 provider) can be exercised with no key, no network and no spend.
-The endpoint is free tier with the top weight, so it answers before
-any hosted provider; the variable is read per turn, so it can be set
+The endpoint is free tier and `local`, so it answers before any
+hosted provider; the variable is read per turn, so it can be set
 (here) while the server runs. Answers with one tool call on the first
 turn and text after, to prove the loop closes.
 
