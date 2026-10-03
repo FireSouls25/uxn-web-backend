@@ -23,6 +23,9 @@ Every tool validates like the UI; the backend compiler is final arbiter.
   `player` (≤1/scene, 0 allowed), `static`, `movable` (solid+pushable).
 * `move_object {object, x, y}` — absolute pixels, clamped.
 * `rename_object {from, to}` — click bindings follow.
+* `set_mask {def|object, x?, y?, w?, h?}` — hitbox inside the sprite
+  (collision + clicks; drive keeps full bounds). Omit the numbers
+  to clear. Out-of-sprite boxes are rejected.
 * `delete_node {index, scene?}` / `reorder_nodes {from, to}` /
   `move_node {from_scene, from_index, to_scene}` — draw order follows
   list order; branch moves are cycle-guarded.
@@ -74,6 +77,9 @@ Every tool validates like the UI; the backend compiler is final arbiter.
 * `script_object {object, code}` — ETAL statements wrapped as
   `tick_<scene>_<id>(slot)`, called every frame. Full generated-state
   access (`ox[slot]`, scene fns). Only redeclarations are rejected.
+* `creation_code {object, code}` — per-instance statements spliced
+  after the leaf's create-event blocks (GameMaker Creation Code).
+  Empty clears.
 * `script_scene {scene?, code}` — statements at the end of the frame.
 * Project `customCode` adds top-level declarations plus optional
   `custom_setup()` (boot) / `custom_frame()` (every frame) hooks.
@@ -89,6 +95,9 @@ Every tool validates like the UI; the backend compiler is final arbiter.
   voice editor for the library (same ranges as the boot mix).
 * `rename_sound {from, to}` — play blocks follow. `delete_sound`
   is refused while a play block names the sound.
+* `add_anim_frame {anim, sprite}` — append a frame (same tile size;
+  max 16). `set_anim {anim, rate?, loop?, pingpong?}` — tune ticks
+  per frame, wrap, bounce at the ends (needs loop + 2+ frames).
 * `set_theme {r, g, b}` (0–65535) — the ONLY way to more colors:
   sprites stay 4 indices, but the 4 palette colors can be anything.
 * `validate {}` — full gate (ids, refs, physics, cycles, slots).
