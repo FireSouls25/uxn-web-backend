@@ -56,10 +56,33 @@ Every tool validates like the UI; the backend compiler is final arbiter.
   Defs own their events; instances run them (no local event lists).
 * `add_block {def|object, event, op, ...}` — one action = fixed ETAL:
   `move {dx,dy}` (pixels, clamped), `set_pos {x,y}`,
+  `sprite {sprite}` (same tile size), `show`/`hide` (alive bit),
   `play {sound}` (named one-shot SFX — see below),
-  `goto {scene}`, `destroy` (self; runs the destroy event first),
+  `goto {scene}`, `destroy {target?}` (self default, else
+  any|solid|player|movable|def:<id>, max 12 victims),
   `wait {ticks 1-255}` (arms the alarm event — a waiter without one
-  is rejected, single timer per object).
+  is rejected, single timer per object),
+  `run {snippet}` (named ETAL snippet from the Code library),
+  `code {code}` (legacy inline ETAL — prefer run),
+  `button {label, action}` (annotation, lowers to a comment).
+* `add_variable {name, init?}` / `rename_variable` / `set_variable
+  {variable, init}` / `delete_variable` (refused while referenced)
+  — u16 vars shared with snippets as `var_<id>[0]`;
+  `set {variable, set_mode, set_value}`;
+  `if {if_left, if_op, if_right}` (operands `kind:ref`;
+  then/else nest to depth 3, parent lists addressed `1.then`).
+* Alarms are slotted: `wait {ticks, wait_slot 0-3}` arms the alarm
+  event with the same slot (`add_event ... alarm: N`); slot 0
+  keeps the legacy fn name and bytes.
+* `add_variable {name, init?}` / `rename_variable` / `set_variable
+  {variable, init}` / `delete_variable` (refused while referenced)
+  — u16 vars shared with snippets as `var_<id>[0]`;
+  `set {variable, set_mode, set_value}`;
+  `if {if_left, if_op, if_right}` (operands `kind:ref`;
+  then/else nest to depth 3, addressed `1.then.0`).
+* `add_snippet {name, code?}` / `set_snippet_code {snippet, code}` —
+  the Code library behind run blocks (tick-text gate; refcounted
+  delete like sounds).
 * `preview_event {def|object, event}` — the exact lines the emitter
   writes (same function; preview and build cannot disagree).
   `delete_event` / `delete_block {index}` for iteration.
