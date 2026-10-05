@@ -1,0 +1,21 @@
+# Keep the build context small and the image reproducible. Without
+# this, `docker build` uploads the whole working tree — including the
+# 90MB .venv and .git — on every Render build, and a local .env (which
+# holds real secrets) rides along in the context.
+.git/
+.gitignore
+.venv/
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+tests/
+docs/
+rag/
+docker-compose.yml
+README.md
+ARCHITECTURE.md
+*.md

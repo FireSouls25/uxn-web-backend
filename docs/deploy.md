@@ -40,7 +40,7 @@ Environment tab and leave it if it is there.
 
 | Variable | Value | Notes |
 |---|---|---|
-| `DATABASE_URL` | injected by Render | Use the **internal** URL (`dpg-…` host), not the external one. Already set if the database is linked. |
+| `DATABASE_URL` | injected by Render | Use the **internal** URL (`dpg-…` host), not the external one. Already set if the database is linked. Render injects it without a driver in the scheme (`postgresql://…`); the app normalizes that to `postgresql+psycopg://` because we depend on psycopg 3, not psycopg2 (see `app/db.py`). |
 | `API_KEYS` | a long random string | Service key for `/agent/*` operator endpoints (`X-API-Key`). **Without it every endpoint is open to the internet.** |
 | `JWT_SECRET` | `openssl rand -hex 32` | With the default, anybody can forge a login token. |
 | `CORS_ORIGINS` | the Vercel origin(s) | Filled in at step 3. Comma-separated, no spaces, no trailing slash. |
@@ -80,6 +80,12 @@ not in place yet; it retries in the background and flips on its own —
 no restart needed. If it stays that way, `DATABASE_URL` is wrong (a
 common cause: the *external* URL pasted into the internal field).
 
+If the container exits immediately with `ModuleNotFoundError: No
+module named 'psycopg2'`, `DATABASE_URL` reached the app with no
+driver in the scheme *and* without passing through `normalize_url`
+(an older image, or a hand-written `postgresql+psycopg2://` value).
+Check the Environment tab for an explicit `+psycopg2`.
+
 Then check the routing, which is the one thing a deploy can get
 subtly wrong (a key that did not make it into the environment, a
 provider disabled, a budget spent):
@@ -97,9 +103,12 @@ shows up as `no key (OPENROUTER_API_KEY)`.
 
 ## 2. Frontend on Vercel
 
-**2.1** Push the frontend repo, *Add New → Project* → import it. Vercel
-detects Astro; `vercel.json` pins the build (`npm run build`) and the
-output (`dist`), so there is nothing to fill in.
+**2.1** Push the frontend repo, *Add New → Project* → import it.
+Vercel detects Astro and infers the build (`npm run build`) and the
+output (`dist`), so there is nothing to fill in. `vercel.json` is kept
+for one thing only — the three security headers, which Vercel has no
+equivalent for. The build/output keys were removed rather than left to
+drift out of sync with `astro.config.mjs` and `package.json`.
 
 **2.2 Environment variable** — this is the only setting:
 
@@ -156,6 +165,11 @@ Honest limits, all of them by design rather than by accident:
   matters.
 * **The compiler is baked into the image.** Bumping `ETAL_VERSION`
   means a new sha256 row in `compiler-sha256.txt` *and* a rebuild.
+* **`DATABASE_URL` is normalized at startup, not required to be.**
+  A bare `postgresql://` (what Render injects) becomes
+  `postgresql+psycopg://` in `app/db.py`, because we depend on psycopg
+  3 and SQLAlchemy's default for that scheme is psycopg2, which is not
+  installed. Both spellings work; you do not have to paste a driver.
 * **Artifacts live in Postgres.** Compiled bundles are stored as
   blobs in the jobs table; fine at this scale, not at a large one.
 * **Free tiers are free but rate-limited.** The OpenRouter `:free`
