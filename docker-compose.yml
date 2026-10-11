@@ -21,6 +21,11 @@ services:
     build: .
     ports:
       - "8000:8000"
+    # Provider keys (OPENROUTER_API_KEY, …) come from backend/.env.
+    # Explicit `environment:` below wins over `env_file:`, so the
+    # container keeps the compose values (db host, baked compiler).
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql+psycopg://uxn:uxn@db:5432/uxnweb
       # Baked release binary (see Dockerfile). NOT a checkout mount: a
