@@ -21,7 +21,10 @@ Every tool validates like the UI; the backend compiler is final arbiter.
   not transparency).
 * `put_on_scene {sprite, scene?, x?, y?, kind?, name?}` — kinds:
   `player` (≤1/scene, 0 allowed), `static`, `movable` (solid+pushable).
-* `move_object {object, x, y}` — absolute pixels, clamped.
+  Coordinates are game pixels (origin top-left); use `scene_map` +
+  `find_space` so placements land coherently.
+* `move_object {object, x, y}` — absolute game pixels, clamped.
+  Validate with `check_space` first.
 * `rename_object {from, to}` — click bindings follow.
 * `set_mask {def|object, x?, y?, w?, h?}` — hitbox inside the sprite
   (collision + clicks; drive keeps full bounds). Omit the numbers
@@ -29,6 +32,26 @@ Every tool validates like the UI; the backend compiler is final arbiter.
 * `delete_node {index, scene?}` / `reorder_nodes {from, to}` /
   `move_node {from_scene, from_index, to_scene}` — draw order follows
   list order; branch moves are cycle-guarded.
+
+## Space & coordinates
+
+* The canvas is W×H **game pixels, origin top-left, +x right, +y
+  down**. Sizes are literal pixels (an 8×8 sprite is `w: 8, h:
+  8`); the 8px tile grid is a placement convention (snap), not a
+  boundary — any integer pixel is addressable.
+* `scene_map {scene?}` — `{width, height, objects: [{path, x, y,
+  w, h, kind, solid, sprite}]}` with effective kind/solid/sprite
+  (template fallbacks applied, subscene offsets accumulated).
+  Read this before placing or moving anything.
+* `find_space {w?, h?, scene?, nearX?, nearY?, avoid?}` — first free
+  8px-snapped `{x, y}` fitting w×h inside the canvas without
+  overlapping solid objects (`avoid: 'all'` dodges every object).
+  `ok: false` means nothing fits — shrink or move things first.
+* `check_space {x, y, w?, h?, scene?}` — `{inside, fits,
+  overlaps, solid}` for a candidate rect. `fits` means inside the
+  canvas with no solid overlap.
+* Solid = `solid` flag set or `movable` kind. Overlap is rectangle
+  intersection; touching edges do not overlap.
 
 ## Object templates (Object ≠ Sprite ≠ Instance)
 
