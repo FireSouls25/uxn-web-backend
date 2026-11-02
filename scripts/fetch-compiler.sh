@@ -20,7 +20,7 @@ fail() { echo "fetch-compiler: $1" >&2; exit 1; }
 
 case "$STRATEGY" in
   local)
-    BIN="${ETAL_BIN:-$ROOT/../../uxn-dsl/build/linux-x86/etal}"
+    BIN="${ETAL_BIN:-$ROOT/../uxn-dsl/build/linux-x86/etal}"
     [ -x "$BIN" ] || fail "local compiler not executable: $BIN"
     "$BIN" --list-targets >/dev/null 2>&1 \
       || fail "local compiler failed --list-targets: $BIN"

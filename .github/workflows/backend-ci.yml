@@ -1,0 +1,27 @@
+name: backend-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - name: Install SDL runtime (vendored VM links it dynamically)
+        run: sudo apt-get update -y && sudo apt-get install -y libsdl2-2.0-0
+      - name: Fetch pinned compiler
+        run: echo "ETAL_BIN=$(sh scripts/fetch-compiler.sh 'release:v0.1.3')" >> "$GITHUB_ENV"
+        env:
+          COMPILER_DIR: /tmp/etal
+      - run: uv run pytest -q
+        env:
+          ETAL_BIN: /tmp/etal/etal

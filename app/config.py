@@ -14,8 +14,8 @@ try:
     load_dotenv(BACKEND_DIR / ".env")
 except ImportError:
     pass
-# Local-dev fallback: compiler checkout next to uxn-webpage/.
-DEV_ETAL = BACKEND_DIR.parent.parent / "uxn-dsl" / "build" / "linux-x86" / "etal"
+# Local-dev fallback: compiler checkout inside uxn-webpage/.
+DEV_ETAL = BACKEND_DIR.parent / "uxn-dsl" / "build" / "linux-x86" / "etal"
 
 
 def _env(name: str, default: str) -> str:
