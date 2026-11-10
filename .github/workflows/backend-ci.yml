@@ -18,10 +18,20 @@ jobs:
       - run: uv sync
       - name: Install SDL runtime (vendored VM links it dynamically)
         run: sudo apt-get update -y && sudo apt-get install -y libsdl2-2.0-0
-      - name: Fetch pinned compiler
-        run: echo "ETAL_BIN=$(sh scripts/fetch-compiler.sh 'release:v0.1.3')" >> "$GITHUB_ENV"
+      - name: Fetch latest compiler release
+        # Always the newest uxn-dsl release, so CI tests what users get.
+        # Verified against compiler-sha256.txt when pinned, else against
+        # the sha256 digest GitHub publishes for the asset.
+        run: echo "ETAL_BIN=$(sh scripts/fetch-compiler.sh 'release:latest')" >> "$GITHUB_ENV"
         env:
           COMPILER_DIR: /tmp/etal
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Stage web-target support files next to the binary
+        # Release tarballs predate the web/ packaging fix (see
+        # etal-web/README.md): copy them in so --target web works.
+        run: |
+          [ -d /tmp/etal/web ] || cp -r etal-web /tmp/etal/web
+          /tmp/etal/etal --list-targets
       - run: uv run pytest -q
         env:
           ETAL_BIN: /tmp/etal/etal

@@ -59,4 +59,4 @@ def test_fetch_script_rejects_unpinned_and_unknown(tmp_path):
         env={**os.environ, "COMPILER_DIR": str(tmp_path)},
     )
     assert empty.returncode != 0
-    assert "no pinned hash" in empty.stderr
+    assert "no pinned or published hash" in empty.stderr
