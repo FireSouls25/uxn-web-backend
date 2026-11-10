@@ -6,7 +6,8 @@
 #   GITHUB_REPO     owner/repo (default: FireSouls25/uxn-dsl)
 # Strategies:
 #   local            use ETAL_BIN as-is (dev checkout); just smoke-tests it
-#   release:<tag>    download etal-linux-x86_64.tar.gz for <tag>, verify
+#   release:<tag>    download etal-linux-<arch>.tar.gz for <tag> (x86_64 or
+#                    aarch64, from uname -m; ETAL_ASSET overrides), verify
 #                    sha256 against compiler-sha256.txt, unpack, smoke-test
 #   release:latest   resolve the newest GitHub release (CI uses this so it
 #                    always tests what users will get). A pinned hash
@@ -33,7 +34,7 @@ case "$STRATEGY" in
   release:*)
     TAG="${STRATEGY#release:}"
     [ -n "$TAG" ] || fail "empty tag in release:<tag>"
-    ASSET="etal-linux-x86_64.tar.gz"
+    ASSET="${ETAL_ASSET:-etal-linux-$(uname -m).tar.gz}"
     command -v curl >/dev/null 2>&1 || fail "curl is required for release fetching"
     PIN="$ROOT/compiler-sha256.txt"
     [ -f "$PIN" ] || fail "pin file missing: $PIN"

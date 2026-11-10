@@ -2,8 +2,9 @@
 # Bump the pinned etal compiler release everywhere prod reads it.
 # Usage: sh scripts/bump-compiler.sh [tag]   (default: latest remote tag)
 #
-# Resolves the tag, downloads etal-linux-x86_64.tar.gz, smoke-tests
-# the extracted binary (--list-targets), then records its sha256 in
+# Resolves the tag, downloads etal-linux-x86_64.tar.gz (and
+# etal-linux-aarch64.tar.gz when the tag has it), smoke-tests the one
+# matching this machine (--list-targets), then records their sha256 in
 # compiler-sha256.txt and points Dockerfile (ARG), docker-compose.yml
 # and app/config.py at the new version. Future fetches (image build,
 # CI, fetch-compiler.sh) verify against the recorded hash, so a bad
@@ -25,23 +26,33 @@ echo "bump-compiler: target $TAG"
 
 TMPD=$(mktemp -d)
 trap 'rm -rf "$TMPD"' EXIT INT TERM
-URL="https://github.com/$REPO/releases/download/$TAG/$ASSET"
-curl -sSL --fail --retry 3 -o "$TMPD/$ASSET" "$URL" \
-  || { echo "bump-compiler: download failed: $URL" >&2; exit 1; }
-SHA=$(sha256sum "$TMPD/$ASSET" | cut -d' ' -f1)
-mkdir -p "$TMPD/pkg"
-tar xzf "$TMPD/$ASSET" -C "$TMPD/pkg"
-BIN="$TMPD/pkg/etal"
-[ -f "$BIN" ] || { echo "bump-compiler: no etal in $ASSET" >&2; exit 1; }
-chmod +x "$BIN"
-"$BIN" --list-targets >/dev/null 2>&1 \
-  || { echo "bump-compiler: fetched etal fails --list-targets" >&2; exit 1; }
-echo "bump-compiler: $TAG ok (sha256 $SHA)"
-
 PIN="$ROOT/compiler-sha256.txt"
-grep -v " $TAG $ASSET\$" "$PIN" > "$TMPD/pin" || true
-printf '%s  %s %s\n' "$SHA" "$TAG" "$ASSET" >> "$TMPD/pin"
-mv "$TMPD/pin" "$PIN"
+HOST="etal-linux-$(uname -m).tar.gz"
+
+# Pin every Linux asset the tag has: x86_64 (required) and aarch64
+# (ARM servers; tags before v0.1.5 have none). Only the one matching
+# this machine can be smoke-tested here.
+for A in "$ASSET" etal-linux-aarch64.tar.gz; do
+  URL="https://github.com/$REPO/releases/download/$TAG/$A"
+  if ! curl -sSL --fail --retry 3 -o "$TMPD/$A" "$URL"; then
+    [ "$A" = "$ASSET" ] && { echo "bump-compiler: download failed: $URL" >&2; exit 1; }
+    echo "bump-compiler: $TAG has no $A (skipped)"
+    continue
+  fi
+  SHA=$(sha256sum "$TMPD/$A" | cut -d' ' -f1)
+  rm -rf "$TMPD/pkg" && mkdir -p "$TMPD/pkg"
+  tar xzf "$TMPD/$A" -C "$TMPD/pkg"
+  [ -f "$TMPD/pkg/etal" ] || { echo "bump-compiler: no etal in $A" >&2; exit 1; }
+  if [ "$A" = "$HOST" ]; then
+    chmod +x "$TMPD/pkg/etal"
+    "$TMPD/pkg/etal" --list-targets >/dev/null 2>&1 \
+      || { echo "bump-compiler: fetched etal fails --list-targets ($A)" >&2; exit 1; }
+  fi
+  echo "bump-compiler: $TAG $A ok (sha256 $SHA)"
+  grep -v " $TAG $A\$" "$PIN" > "$TMPD/pin" || true
+  printf '%s  %s %s\n' "$SHA" "$TAG" "$A" >> "$TMPD/pin"
+  mv "$TMPD/pin" "$PIN"
+done
 
 sed -i "s/^ARG ETAL_VERSION=.*/ARG ETAL_VERSION=$TAG/" "$ROOT/Dockerfile"
 sed -i "s/^\(\s*\)ETAL_VERSION: .*/\1ETAL_VERSION: \"$TAG\"/" "$ROOT/docker-compose.yml"
@@ -49,4 +60,4 @@ sed -i "s/^\(\s*\)ETAL_SOURCE: .*/\1ETAL_SOURCE: \"release:$TAG\"/" "$ROOT/docke
 sed -i "s/_env(\"ETAL_VERSION\", \"[^\"]*\")/_env(\"ETAL_VERSION\", \"$TAG\")/" "$ROOT/app/config.py"
 
 echo "bump-compiler: pinned $TAG in compiler-sha256.txt, Dockerfile, docker-compose.yml, app/config.py"
-grep " $TAG $ASSET\$" "$PIN"
+grep " $TAG " "$PIN"

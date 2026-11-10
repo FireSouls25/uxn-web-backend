@@ -5,6 +5,12 @@ The etal releases are x86_64-only, so `Dockerfile` here builds the
 compiler and the uxn2 assembler VM from source (the Linux download
 bundles still use the x86_64 VM from `vendor/`).
 
+Once a compiler release ships `etal-linux-aarch64.tar.gz` (v0.1.5 on,
+see uxn-dsl's CI) and `scripts/bump-compiler.sh` has pinned it, the
+main `backend/Dockerfile` works here too (`fetch-compiler.sh` picks
+the asset for the host CPU): point `compose.yml` at it (`context:
+../..`, `dockerfile: Dockerfile`) and drop the source build.
+
 Deploy or update, from `backend/` (needs the instance's SSH key):
 
     sh deploy/aws/deploy.sh <elastic-ip> [~/.ssh/uxn-backend.pem]
