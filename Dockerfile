@@ -16,6 +16,8 @@ WORKDIR /srv
 COPY pyproject.toml uv.lock ./
 RUN /bin/uv sync --frozen --no-dev
 COPY app ./app
+# Agent docs: served to MCP clients (app/mcp.py).
+COPY rag ./rag
 
 ARG ETAL_VERSION=v0.1.4
 ENV ETAL_SOURCE=release:${ETAL_VERSION} \

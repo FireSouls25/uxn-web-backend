@@ -106,3 +106,18 @@ class SharedGame(Base):
         DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
     expires_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class BridgeKey(Base):
+    """A pairing key for the agent bridge (app/bridge.py). Only the
+    SHA-256 of the key is kept; the key itself is shown once."""
+
+    __tablename__ = "bridge_keys"
+
+    sha: Mapped[str] = mapped_column(String(64), primary_key=True)
+    owner_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    label: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+    expires_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True))

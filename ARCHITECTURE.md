@@ -44,6 +44,19 @@ tree, runs the pinned compiler, and returns build artifacts.
 * `GET /play/{id}` — the shared page, public, with
   `Content-Security-Policy: sandbox allow-scripts` so user code runs
   in an opaque origin, never as the API. `410` once expired.
+* `POST /bridge/keys` (logged in) → `{ key, mcp_url, expires_at }`;
+  `DELETE /bridge/keys` (bearer = the key) revokes it. Pairs an
+  outside agent with the user's studio tab (`app/bridge.py`). Only the
+  key's SHA-256 is stored; keys last 30 days.
+* `WS /ws/bridge?key=` — the studio tab's end of the bridge: it sends
+  its tool manifest, then answers `call` frames with tool results.
+* `POST /mcp` — an MCP server (Streamable HTTP, JSON responses,
+  `Authorization: Bearer <key>`; `app/mcp.py`). It serves docs tools
+  (`read_doc`, `search_docs`, `compile_check`, `studio_status`), the
+  `rag/` docs as resources, and every tool of the paired tab, relayed
+  over the socket. The studio's tools run in the browser on the open
+  project, so the server relays and never runs them itself. The
+  registry of tabs is in memory: run one server process.
 * `WS /ws/check` — live diagnostics while editing (`app/live.py`).
   Client sends `{type:"check", id, entry, files, lang}` after each
   pause in typing; server answers `checking` then `result {ok,
@@ -116,6 +129,7 @@ v1 (this milestone):
 * [x] `GET /targets`, `GET /version`, `GET /health`
 * [x] `WS /ws/check` live diagnostics (frontend: Code view → Live)
 * [x] `POST /share` + `GET /play/{id}` temporary play links (Export → Share link)
+* [x] `POST /mcp` + `WS /ws/bridge` agent bridge (Agent → Connect an agent)
 * [x] Diagnostic parsing to `{file, line, col, msg}`
 * [x] Content-hash compile cache (identical requests return the original job)
 * [x] Explicit-row bundles (`linux-*`, `macos-*`) once verified

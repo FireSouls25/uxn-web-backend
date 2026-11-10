@@ -15,10 +15,10 @@ import uuid
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
 
-from . import auth, compiler, live
+from . import auth, bridge, compiler, live, mcp
 from . import limits
 from . import llm
 from . import llm_registry
@@ -29,7 +29,7 @@ from .config import settings
 from .db import ensure_schema, get_db
 from .i18n import resolve_lang, t
 from .limits import RateLimited, ServerBusy
-from .models import CompileJob, RefreshToken, SharedGame, User
+from .models import BridgeKey, CompileJob, RefreshToken, SharedGame, User
 from .schemas import (
     Candidate,
     CompileRequest,
@@ -824,6 +824,58 @@ def play_shared(
         at = page.find(b"</head>")
         page = page[:at] + HIDE_CURSOR_STYLE + page[at:] if at >= 0 else HIDE_CURSOR_STYLE + page
     return HTMLResponse(page, headers=PLAY_HEADERS)
+
+
+@app.post("/bridge/keys", status_code=201)
+def create_bridge_key(
+    request: Request,
+    db: Session = Depends(get_db),
+    caller: User | None = Depends(authorize),
+) -> dict[str, str]:
+    """Pair an outside agent with this user's studio tab. The key is
+    shown once; the tab connects with it and the MCP client sends it."""
+    rate_key = caller.id if caller else (request.client.host if request.client else "unknown")
+    try:
+        limits.check_rate_limit(rate_key)
+    except RateLimited as e:
+        raise HTTPException(status_code=429, detail=t("error.rate_limited", "en", seconds=e.retry_after))
+    db.query(BridgeKey).filter(BridgeKey.expires_at < _utcnow()).delete()
+    key, row = bridge.new_key(caller.id if caller else None, "studio")
+    db.add(row)
+    db.commit()
+    base = settings.public_base_url or str(request.base_url).rstrip("/")
+    return {"key": key, "mcp_url": f"{base}/mcp", "expires_at": _aware(row.expires_at).isoformat()}
+
+
+@app.delete("/bridge/keys")
+def revoke_bridge_key(
+    db: Session = Depends(get_db),
+    authorization: str | None = Header(default=None),
+) -> dict[str, str]:
+    """Revoke the key sent as the bearer token (the tab's Disconnect)."""
+    key = authorization[7:].strip() if authorization and authorization.lower().startswith("bearer ") else ""
+    row = db.get(BridgeKey, bridge.key_hash(key)) if key else None
+    if row is not None:
+        db.delete(row)
+        db.commit()
+    return {"status": "revoked"}
+
+
+@app.post("/mcp")
+async def mcp_endpoint(request: Request) -> Response:
+    return await mcp.handle(request)
+
+
+@app.get("/mcp")
+def mcp_no_stream() -> Response:
+    # Streamable HTTP: no server-initiated stream on this server.
+    return Response(status_code=405, headers={"Allow": "POST"})
+
+
+@app.websocket("/ws/bridge")
+async def ws_bridge(ws: WebSocket) -> None:
+    """The studio tab's side of the agent bridge (app/bridge.py)."""
+    await bridge.registry.serve(ws)
 
 
 @app.websocket("/ws/check")
