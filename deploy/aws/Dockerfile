@@ -1,0 +1,40 @@
+# arm64 (Graviton, e.g. t4g) image. The etal releases ship x86_64 Linux
+# only, so this builds the compiler and the uxn2 VM it assembles with
+# from source. Build context: a directory holding backend/ and uxn-dsl/
+# side by side (deploy.sh lays it out). Otherwise the same as the main
+# Dockerfile.
+FROM ocaml/opam:debian-12-ocaml-5.2 AS etal
+RUN opam update -y >/dev/null && opam install -y "dune>=3.24&<3.25"
+COPY --chown=opam uxn-dsl /home/opam/uxn-dsl
+WORKDIR /home/opam/uxn-dsl
+RUN opam exec -- dune build -p etal @install && cp _build/install/default/bin/etal /home/opam/etal
+
+FROM python:3.12-slim AS vm
+# Same uxn2 commit the compiler's CI vendors for the other rows.
+ARG UXN2_COMMIT=8794ea557cdf282968d3e0fc93714840a42b245c
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev libsdl2-dev git ca-certificates \
+    && git clone --quiet https://git.sr.ht/~rabbits/uxn2 /uxn2 && git -C /uxn2 checkout --quiet "$UXN2_COMMIT" \
+    && cc $(sdl2-config --cflags) -DNDEBUG -O2 -g0 /uxn2/src/uxn2.c -o /uxn2/uxn2-bin $(sdl2-config --libs) && strip /uxn2/uxn2-bin
+
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl libsdl2-2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+WORKDIR /srv
+COPY backend/pyproject.toml backend/uv.lock ./
+RUN /bin/uv sync --frozen --no-dev
+COPY backend/app ./app
+COPY backend/rag ./rag
+
+COPY --from=etal /home/opam/etal /opt/etal/etal
+COPY uxn-dsl/vendor /opt/etal/vendor
+COPY --from=vm /uxn2/uxn2-bin /opt/etal/vendor/linux-aarch64/uxn2
+COPY backend/etal-web/ /opt/etal/web/
+RUN /opt/etal/etal --list-targets
+
+ENV ETAL_SOURCE=local COMPILER_DIR=/opt/etal ETAL_BIN=/opt/etal/etal FORWARDED_ALLOW_IPS=*
+EXPOSE 8000
+# One worker on purpose: quotas, compile slots and the agent bridge
+# registry are in-process.
+CMD ["/bin/sh", "-c", "exec /srv/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=${FORWARDED_ALLOW_IPS} --no-server-header"]

@@ -1,0 +1,50 @@
+# Production stack on one small VM: Postgres, the API, and Caddy for
+# HTTPS (automatic Let's Encrypt certificate for $DOMAIN).
+# Env: backend.env is your backend/.env as-is; prod.env (made by
+# deploy.sh on first run) overrides what must differ on the server:
+# DATABASE_URL, POSTGRES_PASSWORD, JWT_SECRET, PUBLIC_BASE_URL.
+name: uxn
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    env_file: [prod.env]
+    environment:
+      POSTGRES_USER: uxn
+      POSTGRES_DB: uxnweb
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uxn"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ../../..
+      dockerfile: backend/deploy/aws/Dockerfile
+    image: uxn-api
+    restart: unless-stopped
+    env_file: [backend.env, prod.env]
+    environment:
+      # The image's compiler, whatever backend.env says (a dev path).
+      ETAL_BIN: /opt/etal/etal
+      ETAL_SOURCE: local
+      COMPILER_DIR: /opt/etal
+    depends_on:
+      db:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    env_file: [prod.env]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy:/data
+    depends_on: [api]
+
+volumes:
+  pgdata:
+  caddy:
