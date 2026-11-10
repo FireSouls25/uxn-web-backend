@@ -57,6 +57,7 @@ done
 sed -i "s/^ARG ETAL_VERSION=.*/ARG ETAL_VERSION=$TAG/" "$ROOT/Dockerfile"
 sed -i "s/^\(\s*\)ETAL_VERSION: .*/\1ETAL_VERSION: \"$TAG\"/" "$ROOT/docker-compose.yml"
 sed -i "s/^\(\s*\)ETAL_SOURCE: .*/\1ETAL_SOURCE: \"release:$TAG\"/" "$ROOT/docker-compose.yml"
+sed -i "s/^\(\s*\)ETAL_VERSION: .*/\1ETAL_VERSION: \"$TAG\"/" "$ROOT/deploy/aws/compose.yml"
 sed -i "s/_env(\"ETAL_VERSION\", \"[^\"]*\")/_env(\"ETAL_VERSION\", \"$TAG\")/" "$ROOT/app/config.py"
 
 echo "bump-compiler: pinned $TAG in compiler-sha256.txt, Dockerfile, docker-compose.yml, app/config.py"

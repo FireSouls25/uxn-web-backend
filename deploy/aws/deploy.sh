@@ -40,5 +40,6 @@ ln -sf /opt/uxn/state/prod.env prod.env
 # The bundled Postgres only runs when the app is pointed at it.
 if grep -q "^DATABASE_URL=.*@db:" prod.env; then PROFILE="--profile localdb"; else PROFILE=""; fi
 docker compose $PROFILE up -d --build --remove-orphans
+[ -n "$PROFILE" ] || docker compose --profile localdb stop db 2>/dev/null || true
 docker image prune -f >/dev/null'
 echo "deployed: https://$($SSH "grep ^DOMAIN= /opt/uxn/state/prod.env | cut -d= -f2")"

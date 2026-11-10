@@ -38,6 +38,8 @@ services:
       ETAL_BIN: /opt/etal/etal
       ETAL_SOURCE: local
       COMPILER_DIR: /opt/etal
+      # The release the image fetched (bump-compiler.sh keeps it in sync).
+      ETAL_VERSION: "v0.1.5"
 
   caddy:
     image: caddy:2
