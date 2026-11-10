@@ -123,3 +123,32 @@ Every user-facing string exists in English and Spanish
 `Accept-Language` header is honored. Error diagnostics from the
 compiler itself (`file:line:col: msg`) stay in the compiler's
 language; only the surrounding API messages translate.
+
+## Agent bridge and MCP
+
+An outside agent (Claude Code, or any MCP client) can build in a
+user's open studio. See `app/bridge.py` for the full protocol.
+
+| Endpoint | Auth | Purpose |
+|---|---|---|
+| `POST /bridge/keys` | user token | Create a pairing key → `{key, mcp_url, expires_at}` (30 days). |
+| `DELETE /bridge/keys` | `Bearer <key>` | Revoke that key. |
+| `WS /ws/bridge?key=` | key | The studio tab's end: sends `hello` with its tool manifest and answers `call` frames. |
+| `POST /mcp` | `Bearer <key>` | MCP over Streamable HTTP (JSON responses). |
+
+What `/mcp` offers:
+* `initialize` returns working instructions for the agent.
+* `tools/list` returns the paired tab's tools (the in-app agent's set,
+  plus `project_context`). It also lists five server tools that work
+  without a tab: `studio_status`, `list_docs`, `read_doc`,
+  `search_docs` and `compile_check`.
+* `resources/list` and `resources/read` serve the agent docs
+  (`uxnforge://docs/<name>`, from `rag/`).
+
+Calls to studio tools are relayed to the tab, with a 90 s timeout.
+They fail cleanly when no tab is connected. Tabs are kept in
+memory, so run a single server process. Example:
+
+```sh
+claude mcp add --transport http uxn-forge https://<api>/mcp --header "Authorization: Bearer uxf_…"
+```
