@@ -19,7 +19,7 @@ COPY app ./app
 # Agent docs: served to MCP clients (app/mcp.py).
 COPY rag ./rag
 
-ARG ETAL_VERSION=v0.1.5
+ARG ETAL_VERSION=v0.1.6
 ENV ETAL_SOURCE=release:${ETAL_VERSION} \
     COMPILER_DIR=/opt/etal \
     ETAL_BIN=/opt/etal/etal \

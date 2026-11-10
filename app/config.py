@@ -24,7 +24,7 @@ def _env(name: str, default: str) -> str:
 
 class Settings:
     etal_bin: str = _env("ETAL_BIN", str(DEV_ETAL) if DEV_ETAL.exists() else "etal")
-    etal_version: str = _env("ETAL_VERSION", "v0.1.5")
+    etal_version: str = _env("ETAL_VERSION", "v0.1.6")
     database_url: str = _env(
         "DATABASE_URL",
         "postgresql+psycopg://uxn:uxn@localhost:5432/uxnweb",

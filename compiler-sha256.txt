@@ -5,3 +5,5 @@
 c1f3f876f611dabf43173d3ce6bb25fb5da300bfba7d3ed8ffada842214647d5  v0.1.4 etal-linux-x86_64.tar.gz
 22748b79d1b29b20689fabdad67bcbbb5eab446aaf081f328ee37d6960ff4fc0  v0.1.5 etal-linux-x86_64.tar.gz
 72fe3de67715c89623dac18d124ab54a030da99dbcfda7286188f42d3204b859  v0.1.5 etal-linux-aarch64.tar.gz
+9287324a227d07854ef3ba62de169f963e65b8ef0efeda8ae60826b299f38613  v0.1.6 etal-linux-x86_64.tar.gz
+4c8fbb6f26e32ce23440806f4cda6e73bb5e07d86613acd76fa0d8d391c16e0e  v0.1.6 etal-linux-aarch64.tar.gz
