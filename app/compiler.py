@@ -32,10 +32,11 @@ TARGET_ROWS: dict[str, str] = {
 # next to the ROM, so the Linux backend can build every OS's download.
 OPTIONAL_ROWS: dict[str, str] = {
     "macos": "macos-arm64",
-    "macos-intel": "macos-x86_64",
     "windows": "windows-x86_64",
 }
-COMING_SOON_ROWS = ("macos-arm64", "macos-x86_64", "linux-aarch64", "windows-x86_64")
+# Rows a compiler may vendor that this backend does not serve yet (shown
+# by GET /targets until they are). macOS Intel is not a target.
+COMING_SOON_ROWS = ("macos-arm64", "linux-aarch64", "windows-x86_64")
 
 _rows_cache: dict[str, dict[str, dict[str, object]]] = {}
 

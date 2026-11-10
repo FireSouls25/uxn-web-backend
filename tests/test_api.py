@@ -113,7 +113,7 @@ def test_windows_download_is_one_exe():
 
 
 def test_rejections():
-    # macOS Intel is not vendored by any compiler release (not a target).
+    # macOS Intel is not a target (unknown id).
     assert _compile(target="macos-intel").status_code == 400
     assert _compile(target="amiga").status_code == 400
     assert _compile(files={"../evil.ux": HELLO}, entry="../evil.ux").status_code == 400
