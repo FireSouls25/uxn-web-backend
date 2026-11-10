@@ -4,7 +4,7 @@
 # side by side (deploy.sh lays it out). Otherwise the same as the main
 # Dockerfile.
 FROM ocaml/opam:debian-12-ocaml-5.2 AS etal
-RUN opam update -y >/dev/null && opam install -y "dune>=3.24&<3.25"
+RUN opam update -y >/dev/null && opam install -y dune.3.24.2
 COPY --chown=opam uxn-dsl /home/opam/uxn-dsl
 WORKDIR /home/opam/uxn-dsl
 RUN opam exec -- dune build -p etal @install && cp _build/install/default/bin/etal /home/opam/etal
