@@ -313,3 +313,16 @@ def test_share_expires():
         db.commit()
     assert client.get(f"/play/{share['id']}").status_code == 410
     assert client.get("/play/missing").status_code == 410
+
+
+def test_cache_key_follows_the_compiler(monkeypatch):
+    """A new compiler (or new vendored VMs) under the same ETAL_VERSION
+    must not serve builds the old one made."""
+    from app import compiler
+
+    files = {"main.ux": HELLO}
+    monkeypatch.setattr(compiler, "compiler_fingerprint", lambda: "old")
+    old = compiler.files_sha(files)
+    monkeypatch.setattr(compiler, "compiler_fingerprint", lambda: "new")
+    assert compiler.files_sha(files) != old
+    assert compiler.files_sha(files) == compiler.files_sha(dict(files))

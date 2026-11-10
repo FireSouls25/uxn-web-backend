@@ -103,8 +103,39 @@ def validate_files(files: dict[str, str], entry: str) -> ValidationError | None:
     return None
 
 
+_fingerprints: dict[str, str] = {}
+
+
+def compiler_fingerprint() -> str:
+    """Identity of the installed compiler: its binary plus the vendor/
+    and web/ trees next to it (the VMs and emulator a bundle packs).
+    Part of the compile cache key, so a new compiler or a new VM never
+    serves builds made by the old one, whatever ETAL_VERSION says."""
+    try:
+        binary = etal_bin()
+    except FileNotFoundError:
+        return "none"
+    if binary not in _fingerprints:
+        h = hashlib.sha256()
+        root = Path(binary).resolve().parent
+        paths = [Path(binary).resolve()]
+        for sub in ("vendor", "web"):
+            d = root / sub
+            if d.is_dir():
+                paths += sorted(p for p in d.rglob("*") if p.is_file())
+        for p in paths:
+            h.update(str(p.relative_to(root) if p.is_relative_to(root) else p.name).encode())
+            h.update(b"\x00")
+            h.update(p.read_bytes())
+        _fingerprints[binary] = h.hexdigest()
+    return _fingerprints[binary]
+
+
 def files_sha(files: dict[str, str]) -> str:
+    """Compile cache key: the file tree and the compiler that builds it."""
     h = hashlib.sha256()
+    h.update(compiler_fingerprint().encode())
+    h.update(b"\x00")
     for path in sorted(files):
         h.update(path.encode())
         h.update(b"\x00")
