@@ -57,18 +57,43 @@ sprites.
 
 ## Example: Sprout Run (platformer, no scripts)
 
-* Scenes `title`, `level`, `win`, `lose`. `level` has a 160×18 tile
-  layer (sheet `tiles`: grass, dirt, brick, stone are solid; bush,
-  flower and fence are decor), `camera: follow hero`, and a HUD text
-  object `hud`.
-* Templates: `hero` (platformer, speed 2, jump 5, mask 2,3,12×13,
-  blend 5), `beetle` (walker, speed 1), `coin`, `flag`.
-* Hero events: collide coin → destroy other, coins +1, play coin, send
-  `score` (the HUD redraws `COINS ` + var coins on that message).
-  Collide beetle → if `my y + 12 < other y` (falling onto it):
-  destroy other, jump 3, play stomp; else play hurt and goto lose.
-  Collide flag → goto win. Step: if y > 144 (fell in a pit) → lose.
-* Level scene create: set coins 0.
+* 256×192. Scenes `title`, `level`, `win`, `lose`, each with a tile
+  layer. The level layer is 160×24 from sheet `tiles` (16 cells:
+  grass, grass edges at pits, dirt, deep dirt, brick, stone, ledge are
+  solid; bush, flower, fence, cloud pieces and dithered hills are
+  decor). The other scenes share a one-screen backdrop. The level has
+  `camera: follow hero`.
+* Art is drawn from shapes (see craft.md): a shaded, outlined hero
+  with eyes and leaves, a beetle with a shell shine, a waving flag, and
+  a 4-frame `spin` animation on the coin template.
+* Templates: `hero` (platformer, speed 2, jump 5, mask 2,4,12×12,
+  blend 5), `beetle` (walker, speed 1), `coin` (anim spin), `flag`.
+* Hero events:
+  * collide coin → destroy other, coins +1, play coin, send `score`
+    (the HUD text redraws `X ` + var coins).
+  * collide beetle → if `my y + 12 < other y` (falling onto it):
+    destroy other, jump 3, play stomp; else play hurt and goto lose.
+  * collide flag → goto win.
+  * step: if y > 192 (fell in a pit) → lose.
+* HUD: a coin sprite with the spin anim plus that text, both `hud`.
+  Title and end screens: `headline` type, a walking beetle, and
+  blinking prompts.
+
+## Example: Star Catcher (arcade, no scripts)
+
+* 256×192 night city: one tile layer shared by all scenes (starfield,
+  horizon glow, buildings with roofs, lit or dark windows and antennas,
+  dithered ground). A cratered moon sprite with a dithered terminator.
+* Templates:
+  * `basket` (player; mask covers only the rim; held left/right
+    moves it).
+  * `star` (anim twinkle; picks a random speed on create).
+  * `bomb` (anim fizz).
+  * `life`: a heart with var `n` that hides on `hud` when
+    `lives < my n`; three instances with n = 1, 2, 3.
+* Play scene: create resets score/lives, sends `hud`, waits 30;
+  alarm spawns a bomb 1 time in 5, else a star, at x = random 224 + 8,
+  then waits 30.
 
 ## Example: Life Lab (a website, blocks + one script)
 

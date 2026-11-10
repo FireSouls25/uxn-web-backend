@@ -21,7 +21,10 @@ store the UI edits), so the user sees every change live.
 
 ## Building
 
-* Art: `create_sprite` (pixels 0–3), `set_sheet`, `set_look`,
+* Art: `draw_sprite` (shapes, dithering, outline: the way to make
+  detailed art, see craft.md), `create_tile_sheet` (16 8×8 cells for
+  `set_tilemap`), `headline` (2× title type), `create_sprite` (raw
+  pixels 0–3, for tiny things), `set_sheet`, `set_look`,
   `add_anim_frame` / `set_anim`, `set_theme` (the 4 colors).
 * Things: `create_object_def` (template), `add_template_var`,
   `place_instance`, `put_on_scene` (one-off object), `extract_object`,
