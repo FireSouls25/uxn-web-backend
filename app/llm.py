@@ -58,6 +58,11 @@ def spent_today(db: Session, provider_id: str) -> int:
     return int(total or 0)
 
 
+def preferred() -> list[str]:
+    """LLM_PREFERRED, read on every call (like the registry's env)."""
+    return [p.strip() for p in os.environ.get("LLM_PREFERRED", "").split(",") if p.strip()]
+
+
 def rank_models(db: Session, capability: str = "tools") -> dict:
     """Returns {candidates: [...ranked...], excluded: [...with reasons...]}."""
     from .models import LLMProviderState  # noqa: F401  (ensures table mapping)
@@ -118,10 +123,22 @@ def rank_models(db: Session, capability: str = "tools") -> dict:
     # row (both quality 2), and a magic weight would be the only
     # thing standing between them. Sort is stable, so two models
     # that tie on everything keep registry order.
-    candidates.sort(key=lambda c: (not c["free"], c["tier"], not c["local"], -c["quality"], -c["weight"]))
+    # LLM_PREFERRED (comma list of `provider` or `provider/model`) puts
+    # the operator's pick ahead of all of that, in the order given;
+    # everything else keeps the rule above as the fallback chain.
+    prefs = preferred()
+
+    def pref_rank(c: dict) -> int:
+        for i, p in enumerate(prefs):
+            if p in (c["provider"], f"{c['provider']}/{c['model']}"):
+                return i
+        return len(prefs)
+
+    candidates.sort(key=lambda c: (pref_rank(c), not c["free"], c["tier"], not c["local"], -c["quality"], -c["weight"]))
     for i, c in enumerate(candidates):
         c["reason"] = (
-            f"rank {i + 1}: {'free tier' if c['free'] else f'tier {c['tier']}'}"
+            f"rank {i + 1}: {'preferred, ' if pref_rank(c) < len(prefs) else ''}"
+            f"{'free tier' if c['free'] else f'tier {c['tier']}'}"
             f"{', local' if c['local'] else ''}"
             f", quality {c['quality']}, weight {c['weight']}"
         )

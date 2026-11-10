@@ -32,7 +32,7 @@ def _clean(monkeypatch):
     # The dev endpoint and the dynamic model ids are resolved from the
     # environment on every call: clear them so a developer's shell
     # cannot add a candidate the tests did not ask for.
-    for var in ("LLM_DEV_BASE_URL", "LLM_DEV_KEY_ENV", "LLM_DEV_MODEL", "OLLAMA_MODEL"):
+    for var in ("LLM_DEV_BASE_URL", "LLM_DEV_KEY_ENV", "LLM_DEV_MODEL", "OLLAMA_MODEL", "LLM_PREFERRED"):
         monkeypatch.delenv(var, raising=False)
     db = SessionLocal()
     try:
@@ -144,7 +144,7 @@ def test_usage_and_admin(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_API_KEY", "d")
     r = client.post(
         "/agent/usage",
-        json={"provider": "deepseek", "model": "deepseek-chat", "in_tokens": 10, "out_tokens": 5},
+        json={"provider": "deepseek", "model": "deepseek-flash", "in_tokens": 10, "out_tokens": 5},
         headers=SVC,
     )
     assert r.status_code == 200
@@ -321,5 +321,26 @@ def test_keyless_providers_stay_out(monkeypatch):
         assert "openai" not in providers and "anthropic" not in providers
         reason = next(e["reason"] for e in ranked["excluded"] if e["provider"] == "openai")
         assert reason == "no key (OPENAI_API_KEY)"
+    finally:
+        db.close()
+
+
+def test_preferred_goes_first_then_the_usual_order(monkeypatch):
+    """LLM_PREFERRED beats the free-first rule, in the order given; a
+    provider without a key is simply not there, and the rest of the
+    list keeps the automatic order as the fallback chain."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-ds")
+    monkeypatch.setenv("LLM_PREFERRED", "deepseek/deepseek-flash, deepseek/deepseek-v4-pro, mistral")
+    db = SessionLocal()
+    try:
+        ranked = llm.rank_models(db)
+        order = [(c["provider"], c["model"]) for c in ranked["candidates"]]
+        assert order[:2] == [("deepseek", "deepseek-flash"), ("deepseek", "deepseek-v4-pro")]
+        assert ranked["candidates"][0]["reason"].startswith("rank 1: preferred")
+        assert ranked["candidates"][2]["provider"] == "openrouter" and ranked["candidates"][2]["free"]
+        # A bare provider name prefers all of its models.
+        monkeypatch.setenv("LLM_PREFERRED", "deepseek")
+        assert {c["provider"] for c in llm.rank_models(db)["candidates"][:2]} == {"deepseek"}
     finally:
         db.close()

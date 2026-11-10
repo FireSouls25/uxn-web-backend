@@ -73,7 +73,9 @@ PROVIDERS: list[dict] = [
         "key_env": "DEEPSEEK_API_KEY",
         "weight": 60,
         "models": [
-            {"id": "deepseek-chat", "tools": True, "free": False, "tier": TIER_BUDGET, "quality": 2},
+            # The ids the API lists as of 2026-11 (deepseek-chat retired).
+            {"id": "deepseek-flash", "tools": True, "free": False, "tier": TIER_BUDGET, "quality": 2},
+            {"id": "deepseek-v4-pro", "tools": True, "free": False, "tier": TIER_STANDARD, "quality": 3},
         ],
     },
     {
