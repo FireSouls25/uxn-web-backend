@@ -4,25 +4,37 @@ The Chess example (read-only; "Duplicate to edit") is built the way
 the engine intends. Use it as the reference for "blocks for the
 game's shape, scripts for its rules".
 
-* **Scenes**: `menu` (title + PLAY button), `side` (WHITE/BLACK
-  buttons set game var `side`), `play` (board tiles, 32 pieces, text
-  objects title/turn/score, FLIP and MENU buttons, `pool: 28` spawn
-  slots for move dots), `pause` and `over`. `pause` and `over` open
-  with `overlay` so the board stays frozen underneath; RESUME/Esc use
+* **Scenes** (256×192): `menu` (CHESS headline, a WHITE and a BLACK
+  card that set game var `side`, both armies on a checkered floor),
+  `play` (32 pieces, a side panel with TURN king, SCORE, FLIP and
+  MENU, `pool: 30` spawn slots for move dots), `pause` and `over`.
+  `pause` and `over` open with `overlay` so the board stays frozen
+  underneath; their text is a teal dialog (blend 13: overlays draw on
+  the foreground, where color 0 is see-through). RESUME/Esc use
   `back`. Inputs: `confirm` (Enter) and `pause` (Esc).
-* **Art**: `board4` (32×32 board tile used by `tile`), a `pieces`
-  sheet (one cell per piece kind and color), `dot`, `cursor`.
+* **Art**: one tile sheet (`tiles`: light/dark squares, panel dots,
+  card borders, floor) used by every scene's tile layer; the board is
+  24px squares of 3×3 tiles, so it costs no objects. Pieces are
+  shaded 16×16 cells in three 2×2 sheets (a sprite holds at most 4×4
+  tiles): `pc_pq` (pawn, queen), `pc_nb`, `pc_rk`, white on the top
+  row. Pawns share a sheet with queens, so a promotion is only a
+  `cell` change. Plus `dot`, `cursor` and the headline.
 * **Templates**:
-  * `tile`: board squares.
-  * `piece` (blend 0, template var `sq`): on create it sets
-    `sq = layout_sq(x, y)`, calls `put_piece(my sq, cell + 1)` and
-    snaps to `sq_x/sq_y`. Each step, if `grabbed_sq() == my sq`, it
-    follows the mouse. On message `moved`: if it was captured it
-    destroys itself; if it moved, it sets `sq = move_to()`, glides to
-    the new square and updates its cell. On message `rook` it does the
-    castling hop.
-  * `dot` (spawned move markers), `icon`, and `pointer`, which follows
-    the mouse on step (the game draws its own cursor).
+  * `piece` (blend 0, vars `sq` and `code`, the piece code 1–12 set
+    per instance): on create it sets `sq = layout_sq(x, y)`, calls
+    `put_piece(my sq, my code)` and snaps to `sq_x/sq_y`. Each step,
+    if `grabbed_sq() == my sq`, it follows the mouse. On message
+    `moved`: if it was captured it destroys itself; if it moved, it
+    sets `sq = move_to()`, glides to the new square and sets its cell
+    to `pc_cell(code_at(sq))`. On message `rook` it does the castling
+    hop.
+  * `dot` (spawned move markers) and `pointer`, which follows the
+    mouse on step (the game draws its own cursor).
+* **Size budget**: chess is the biggest example and sits near the
+  assembler's label dictionary limit (`Symbols exceeded`). Every
+  `if`, match arm and sprite costs labels: the glue in chess.ux uses
+  `&&`/`||` instead of nested ifs, and a formula instead of branches
+  (`pc_cell`). Keep additions small, or trim something first.
 * **Scene events (play)** form a small message pipeline:
   * create: `new_game(var side)`, then wait 20 (timer 0, so the AI
     moves first when the human plays black).
