@@ -2,3 +2,4 @@
 # any download whose hash is not listed here — add a row per upgrade.
 # Format: "<sha256>  <tag> <asset>"
 36fedf832d07249999f1557d4adfb53d29ce6ba9e293fadc682c6a250361dc45  v0.1.3 etal-linux-x86_64.tar.gz
+c1f3f876f611dabf43173d3ce6bb25fb5da300bfba7d3ed8ffada842214647d5  v0.1.4 etal-linux-x86_64.tar.gz

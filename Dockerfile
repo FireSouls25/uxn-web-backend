@@ -17,7 +17,7 @@ COPY pyproject.toml uv.lock ./
 RUN /bin/uv sync --frozen --no-dev
 COPY app ./app
 
-ARG ETAL_VERSION=v0.1.3
+ARG ETAL_VERSION=v0.1.4
 ENV ETAL_SOURCE=release:${ETAL_VERSION} \
     COMPILER_DIR=/opt/etal \
     ETAL_BIN=/opt/etal/etal \
@@ -26,6 +26,11 @@ COPY scripts/fetch-compiler.sh ./scripts/
 COPY compiler-sha256.txt ./
 RUN COMPILER_DIR=/opt/etal ./scripts/fetch-compiler.sh "release:${ETAL_VERSION}" \
     && /opt/etal/etal --list-targets
+# Web-target support files next to the binary (see etal-web/README.md:
+# release tarballs predate the web/ packaging fix, so ship them here
+# until bump-compiler.sh moves us onto a release that includes them).
+COPY etal-web/ /opt/etal/web/
+RUN /opt/etal/etal --list-targets && ls /opt/etal/web/
 
 EXPOSE 8000
 
