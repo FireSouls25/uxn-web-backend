@@ -1,15 +1,13 @@
 # One-VM deploy on AWS (arm64, e.g. t4g.micro)
 
-Postgres, the API and Caddy (HTTPS) on one small Graviton instance.
-The etal releases are x86_64-only, so `Dockerfile` here builds the
-compiler and the uxn2 assembler VM from source (the Linux download
-bundles still use the x86_64 VM from `vendor/`).
-
-Once a compiler release ships `etal-linux-aarch64.tar.gz` (v0.1.5 on,
-see uxn-dsl's CI) and `scripts/bump-compiler.sh` has pinned it, the
-main `backend/Dockerfile` works here too (`fetch-compiler.sh` picks
-the asset for the host CPU): point `compose.yml` at it (`context:
-../..`, `dockerfile: Dockerfile`) and drop the source build.
+The API and Caddy (HTTPS) on one small Graviton instance, plus a
+Postgres container only when `DATABASE_URL` points at it (`@db:`). The
+image is the main `backend/Dockerfile`: it downloads the pinned
+compiler release for the host CPU (`etal-linux-aarch64.tar.gz` here,
+v0.1.5 on) and verifies it against `compiler-sha256.txt`. To run a
+compiler commit no release has, point `compose.yml` at
+`Dockerfile.source` (context `../../..`) and deploy with
+`UXN_DSL=../uxn-dsl`.
 
 Deploy or update, from `backend/` (needs the instance's SSH key):
 
@@ -26,7 +24,10 @@ Env on the server (`/opt/uxn/state/`):
 * `prod.env`: made once on the first deploy and kept: `DOMAIN`
   (`<ip>.sslip.io`, so Caddy can get a certificate without a domain),
   `PUBLIC_BASE_URL`, `POSTGRES_PASSWORD`, `DATABASE_URL`,
-  `JWT_SECRET`. It wins over `backend.env`.
+  `JWT_SECRET`. Server-only settings and secrets live here too
+  (`CORS_ORIGINS`, `LLM_PREFERRED`, provider keys, a managed
+  `DATABASE_URL`). It wins over `backend.env`. Values must not
+  contain `$` (compose expands it).
 * The compose file pins `ETAL_BIN`/`ETAL_SOURCE`/`COMPILER_DIR` to the
   image's compiler.
 

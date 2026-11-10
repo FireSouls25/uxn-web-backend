@@ -1,12 +1,16 @@
-# Production stack on one small VM: Postgres, the API, and Caddy for
-# HTTPS (automatic Let's Encrypt certificate for $DOMAIN).
+# Production stack on one small VM: the API, Caddy for HTTPS (automatic
+# Let's Encrypt certificate for $DOMAIN) and, only with the `localdb`
+# profile, a Postgres container (deploy.sh enables it when DATABASE_URL
+# points at `db`; a managed database needs none).
 # Env: backend.env is your backend/.env as-is; prod.env (made by
-# deploy.sh on first run) overrides what must differ on the server:
-# DATABASE_URL, POSTGRES_PASSWORD, JWT_SECRET, PUBLIC_BASE_URL.
+# deploy.sh on first run, then edited on the server) overrides what
+# must differ there: DATABASE_URL, JWT_SECRET, PUBLIC_BASE_URL, CORS,
+# provider keys.
 name: uxn
 services:
   db:
     image: postgres:16
+    profiles: [localdb]
     restart: unless-stopped
     env_file: [prod.env]
     environment:
@@ -20,9 +24,12 @@ services:
       retries: 10
 
   api:
+    # The main image: it fetches the pinned compiler release for this
+    # CPU (scripts/fetch-compiler.sh). Dockerfile.source builds it
+    # from ../uxn-dsl instead (context ../../.., UXN_DSL for deploy.sh).
     build:
-      context: ../../..
-      dockerfile: backend/deploy/aws/Dockerfile
+      context: ../..
+      dockerfile: Dockerfile
     image: uxn-api
     restart: unless-stopped
     env_file: [backend.env, prod.env]
@@ -31,9 +38,6 @@ services:
       ETAL_BIN: /opt/etal/etal
       ETAL_SOURCE: local
       COMPILER_DIR: /opt/etal
-    depends_on:
-      db:
-        condition: service_healthy
 
   caddy:
     image: caddy:2

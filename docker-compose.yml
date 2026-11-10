@@ -32,8 +32,8 @@ services:
       # host-built etal needs a newer glibc than this slim image
       # provides, so the mount would be a dead binary.
       ETAL_BIN: /opt/etal/etal
-      ETAL_SOURCE: "release:v0.1.4"
-      ETAL_VERSION: "v0.1.4"
+      ETAL_SOURCE: "release:v0.1.5"
+      ETAL_VERSION: "v0.1.5"
       CORS_ORIGINS: http://localhost:3000,http://localhost:8000,http://localhost:4321
     depends_on:
       db:

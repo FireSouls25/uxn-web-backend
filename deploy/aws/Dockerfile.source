@@ -1,6 +1,7 @@
-# arm64 (Graviton, e.g. t4g) image. The etal releases ship x86_64 Linux
-# only, so this builds the compiler and the uxn2 VM it assembles with
-# from source. Build context: a directory holding backend/ and uxn-dsl/
+# Fallback image that builds the compiler and its uxn2 VM from source
+# (for a CPU or a compiler commit no release covers; releases from
+# v0.1.5 ship linux-aarch64, so compose.yml normally uses the main
+# backend/Dockerfile). Build context: a directory holding backend/ and uxn-dsl/
 # side by side (deploy.sh lays it out). Otherwise the same as the main
 # Dockerfile.
 FROM ocaml/opam:debian-12-ocaml-5.2 AS etal

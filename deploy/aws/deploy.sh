@@ -1,19 +1,21 @@
 #!/bin/sh
 # Ship the backend to the VM and (re)start it.
 # Usage (from backend/): sh deploy/aws/deploy.sh <host-ip> [ssh-key]
-# Copies the committed backend and uxn-dsl trees plus backend/.env
-# (as-is), builds the arm64 image there and restarts the stack.
+# Copies the committed backend tree plus backend/.env (as-is), builds
+# the image there (it fetches the pinned compiler release) and
+# restarts the stack. With UXN_DSL=<checkout> it also ships that
+# uxn-dsl tree, for compose files pointed at Dockerfile.source.
 set -eu
 HOST="$1"
 KEY="${2:-$HOME/.ssh/uxn-backend.pem}"
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-DSL="${UXN_DSL:-$ROOT/../uxn-dsl}"
+DSL="${UXN_DSL:-}"
 SSH="ssh -i $KEY -o StrictHostKeyChecking=accept-new ubuntu@$HOST"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/backend" "$TMP/uxn-dsl"
 git -C "$ROOT" archive HEAD | tar -x -C "$TMP/backend"
-git -C "$DSL" archive HEAD | tar -x -C "$TMP/uxn-dsl"
+[ -z "$DSL" ] || git -C "$DSL" archive HEAD | tar -x -C "$TMP/uxn-dsl"
 tar -czf "$TMP/src.tgz" -C "$TMP" backend uxn-dsl
 scp -i "$KEY" -q "$TMP/src.tgz" "ubuntu@$HOST:/tmp/src.tgz"
 scp -i "$KEY" -q "$ROOT/.env" "ubuntu@$HOST:/tmp/backend.env"
@@ -35,6 +37,8 @@ JWT_SECRET=$(openssl rand -hex 32)
 ENV
 fi
 ln -sf /opt/uxn/state/prod.env prod.env
-docker compose up -d --build
+# The bundled Postgres only runs when the app is pointed at it.
+if grep -q "^DATABASE_URL=.*@db:" prod.env; then PROFILE="--profile localdb"; else PROFILE=""; fi
+docker compose $PROFILE up -d --build --remove-orphans
 docker image prune -f >/dev/null'
 echo "deployed: https://$($SSH "grep ^DOMAIN= /opt/uxn/state/prod.env | cut -d= -f2")"
