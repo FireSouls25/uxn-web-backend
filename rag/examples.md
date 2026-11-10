@@ -70,6 +70,26 @@ sprites.
   Collide flag → goto win. Step: if y > 144 (fell in a pit) → lose.
 * Level scene create: set coins 0.
 
+## Example: Life Lab (a website, blocks + one script)
+
+* 320×240, theme paper/ink/teal/coral. Scenes `home`, `lab`, `about`
+  are pages; every page repeats the nav nodes (logo, site name, link
+  text objects whose click event is `goto <page>`; the current link
+  gets an underline instead of an event).
+* Layout is a **tile layer** per page (sheet `layout`, 16 1×1 cells:
+  nav fill, rounded card edges, dish dots, 6 pill-button pieces) with
+  no solid cells, so it costs no object slots.
+* Buttons are text objects over a pill (label padded with spaces, a
+  `mask` that covers the pill) with a click event.
+* `life.ux` keeps the 48×32 grid in `buffer cells[1536]: u8` and
+  exports `life_step`, `life_random`, `life_clear`, `life_paint(mx,
+  my)`, `life_gen() -> u16`, `life_pop() -> u16`. It draws the cells in
+  `custom_draw` (guarded by `scene != SC_LAB`) after the engine pass.
+* Lab scene events: create → `life_random`, running = 1, wait 4;
+  alarm → if running, `life_step`; send `stats`; wait 4; step → if
+  mouse down, `life_paint(mouse x, mouse y)`. GEN/POP text objects
+  redraw on `stats` with a function value.
+
 ## Small patterns
 
 * **Score HUD**: game var `score`; a text object `hud` "SCORE"; on a
