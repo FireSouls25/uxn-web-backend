@@ -9,11 +9,11 @@ import re
 import subprocess
 import uuid
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from . import auth, compiler
+from . import auth, compiler, live
 from . import limits
 from . import llm
 from . import llm_registry
@@ -715,6 +715,12 @@ def compile_tree(
         cached=False,
         artifacts=_encode(result.artifacts),
     )
+
+
+@app.websocket("/ws/check")
+async def ws_check(ws: WebSocket) -> None:
+    """Live diagnostics while editing; see app/live.py for the protocol."""
+    await live.live_check(ws, get_api_keys())
 
 
 @app.get("/jobs/{job_id}", response_model=JobResponse)

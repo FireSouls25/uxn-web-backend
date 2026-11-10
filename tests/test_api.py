@@ -192,3 +192,44 @@ def test_schema_creation_waits_for_a_cold_database(monkeypatch):
     monkeypatch.setattr(dbmod.Base.metadata, "create_all", always_down)
     assert dbmod.ensure_schema(attempts=2, delay=0) is False
     assert len(calls) == 2  # it gives up loudly, and reports it
+
+
+# ---- live check (WebSocket) ----
+
+def _ws_check(ws, files, rid):
+    ws.send_json({"type": "check", "id": rid, "entry": "main.ux", "files": files, "lang": "en"})
+    while True:
+        msg = ws.receive_json()
+        if msg["type"] in ("result", "error"):
+            return msg
+
+
+def test_ws_check_ok_error_and_cache():
+    with client.websocket_connect("/ws/check") as ws:
+        assert ws.receive_json()["type"] == "hello"
+        ok = _ws_check(ws, {"main.ux": HELLO}, 1)
+        assert ok["type"] == "result" and ok["ok"] is True and ok["id"] == 1
+        assert ok["rom_bytes"] > 0 and ok["cached"] is False
+        again = _ws_check(ws, {"main.ux": HELLO}, 2)
+        assert again["ok"] is True and again["cached"] is True and again["id"] == 2
+        bad = _ws_check(ws, {"main.ux": "main :: fn() {\n nosuchfn();\n}\n"}, 3)
+        assert bad["ok"] is False and bad["diagnostics"]
+
+
+def test_ws_check_rejects_bad_tree():
+    with client.websocket_connect("/ws/check") as ws:
+        ws.receive_json()
+        err = _ws_check(ws, {"../x.ux": "x"}, 7)
+        assert err["type"] == "error" and err["id"] == 7
+
+
+def test_ws_check_requires_auth_when_keys_set(monkeypatch):
+    from starlette.websockets import WebSocketDisconnect
+
+    monkeypatch.setattr("app.main.get_api_keys", lambda: ["k1"])
+    with pytest.raises(WebSocketDisconnect) as e:
+        with client.websocket_connect("/ws/check") as ws:
+            ws.receive_json()
+    assert e.value.code == 4401
+    with client.websocket_connect("/ws/check?api_key=k1") as ws:
+        assert ws.receive_json()["type"] == "hello"
