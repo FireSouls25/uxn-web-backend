@@ -36,6 +36,15 @@ tree, runs the pinned compiler, and returns build artifacts.
   `files` keys must be relative, no `..`, no absolute paths
   (ETAL `import`/`file()` resolve file-relative; drifblim path
   buffers are ~63B, so keep names short and bare).
+* `WS /ws/check` — live diagnostics while editing (`app/live.py`).
+  Client sends `{type:"check", id, entry, files, lang}` after each
+  pause in typing; server answers `checking` then `result {ok,
+  diagnostics, rom_bytes, ms, cached}` (or `error`). Latest wins: a
+  check that arrives during a compile replaces any queued one, so
+  bursts compile only the newest tree; an unchanged tree is answered
+  from the per-connection cache. Auth via `?token=` / `?api_key=`
+  (sockets can't carry headers); rejected sockets close with 4401.
+  Uses the same compile slots and file validation as `POST /compile`.
 
 ## Agent routing (`/agent/*`)
 
@@ -97,6 +106,7 @@ v1 (this milestone):
 
 * [x] `POST /compile` for `rom` + `web` targets
 * [x] `GET /targets`, `GET /version`, `GET /health`
+* [x] `WS /ws/check` live diagnostics (frontend: Code view → Live)
 * [x] Diagnostic parsing to `{file, line, col, msg}`
 * [x] Content-hash compile cache (identical requests return the original job)
 * [x] Explicit-row bundles (`linux-*`, `macos-*`) once verified
