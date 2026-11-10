@@ -249,3 +249,48 @@ def test_unvendored_os_is_coming_soon(monkeypatch):
     assert r.status_code == 400
     ids = {t["id"] for t in client.get("/targets").json()["supported"]}
     assert ids == {"linux", "web"}
+
+
+def _web_job():
+    body = _compile(target="web", mode="bundle").json()
+    assert body["status"] == "ok", body
+    return body["job_id"]
+
+
+def test_share_serves_page_in_sandbox():
+    job = _web_job()
+    r = client.post("/share", json={"job_id": job, "title": "My </script> game", "hide_cursor": True})
+    assert r.status_code == 201, r.text
+    share = r.json()
+    assert share["url"].endswith(f"/play/{share['id']}")
+    page = client.get(f"/play/{share['id']}")
+    assert page.status_code == 200
+    assert "sandbox allow-scripts" in page.headers["content-security-policy"]
+    assert "cursor:none" in page.text
+    # The title is a JSON string inside a script: it cannot close it early.
+    assert "</script> game" not in page.text
+    assert "My \\u003c/script> game" in page.text
+
+
+def test_share_rejects_non_web_jobs():
+    tal = _compile().json()
+    r = client.post("/share", json={"job_id": tal["job_id"]})
+    assert r.status_code == 400
+    r = client.post("/share", json={"job_id": "nope"})
+    assert r.status_code == 400
+
+
+def test_share_expires():
+    import datetime
+
+    from app.db import SessionLocal
+    from app.models import SharedGame
+
+    job = _web_job()
+    share = client.post("/share", json={"job_id": job}).json()
+    with SessionLocal() as db:
+        row = db.get(SharedGame, share["id"])
+        row.expires_at = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=1)
+        db.commit()
+    assert client.get(f"/play/{share['id']}").status_code == 410
+    assert client.get("/play/missing").status_code == 410

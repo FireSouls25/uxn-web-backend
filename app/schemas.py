@@ -187,3 +187,16 @@ class UserProfile(BaseModel):
     id: str
     name: str
     email: str
+
+
+class ShareRequest(BaseModel):
+    job_id: str = Field(min_length=1, max_length=36)
+    title: str = Field(default="", max_length=64)
+    hide_cursor: bool = False
+    days: int | None = Field(default=None, ge=1, le=30)
+
+
+class ShareResponse(BaseModel):
+    id: str
+    url: str
+    expires_at: str

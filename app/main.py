@@ -3,6 +3,10 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import datetime
+import html
+import json
+import secrets
 import logging
 import os
 import re
@@ -11,6 +15,7 @@ import uuid
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from . import auth, compiler, live
@@ -24,7 +29,7 @@ from .config import settings
 from .db import ensure_schema, get_db
 from .i18n import resolve_lang, t
 from .limits import RateLimited, ServerBusy
-from .models import CompileJob, RefreshToken, User
+from .models import CompileJob, RefreshToken, SharedGame, User
 from .schemas import (
     Candidate,
     CompileRequest,
@@ -41,6 +46,8 @@ from .schemas import (
     RelayResponse,
     RouteRequest,
     RouteResponse,
+    ShareRequest,
+    ShareResponse,
     TargetInfo,
     TargetsResponse,
     TokenPair,
@@ -714,6 +721,109 @@ def compile_tree(
         cached=False,
         artifacts=_encode(result.artifacts),
     )
+
+
+HIDE_CURSOR_STYLE = b"<style>#display{cursor:none}</style>"
+
+# The shared page is user-built code on the API's origin. `sandbox`
+# gives it an opaque origin of its own (no storage or cookies of ours,
+# no same-origin requests), keeping scripts and pointer lock for play.
+PLAY_HEADERS = {
+    "Content-Security-Policy": "sandbox allow-scripts allow-pointer-lock",
+    "Cache-Control": "public, max-age=300",
+}
+
+
+def _utcnow() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+def _aware(d: datetime.datetime) -> datetime.datetime:
+    # SQLite hands back naive datetimes; stored values are UTC.
+    return d if d.tzinfo else d.replace(tzinfo=datetime.timezone.utc)
+
+
+@app.post("/share", response_model=ShareResponse, status_code=201)
+def create_share(
+    body: ShareRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    caller: User | None = Depends(authorize),
+    accept_language: str | None = Header(default=None),
+) -> ShareResponse:
+    """Temporary public link to a web build the caller just compiled.
+    Nothing is copied: the link points at the stored compile job."""
+    lang = resolve_lang(None, accept_language)
+    rate_key = caller.id if caller else (request.client.host if request.client else "unknown")
+    try:
+        limits.check_rate_limit(rate_key)
+    except RateLimited as e:
+        raise HTTPException(
+            status_code=429,
+            detail=t("error.rate_limited", lang, seconds=e.retry_after),
+            headers={"Retry-After": str(e.retry_after)},
+        )
+    job = db.get(CompileJob, body.job_id)
+    if job is None or job.status != "ok" or job.html_bin is None:
+        raise HTTPException(status_code=400, detail=t("error.share_not_web", lang))
+
+    now = _utcnow()
+    db.query(SharedGame).filter(SharedGame.expires_at < now).delete()
+    expires = now + datetime.timedelta(days=body.days or settings.share_days)
+    share = SharedGame(
+        id=secrets.token_urlsafe(8),
+        job_id=job.id,
+        title=body.title.strip(),
+        hide_cursor=body.hide_cursor,
+        owner_id=caller.id if caller else None,
+        created_at=now,
+        expires_at=expires,
+    )
+    db.add(share)
+    db.commit()
+    base = settings.public_base_url or str(request.base_url).rstrip("/")
+    return ShareResponse(id=share.id, url=f"{base}/play/{share.id}", expires_at=expires.isoformat())
+
+
+def _gone_page(lang: str) -> HTMLResponse:
+    msg = html.escape(t("error.share_gone", lang))
+    page = (
+        "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>"
+        f"<title>uxn·forge</title><body style='background:#111;color:#ccc;font:16px monospace;"
+        f"display:grid;place-items:center;height:100vh;margin:0'><p>{msg}</p></body>"
+    )
+    return HTMLResponse(page, status_code=410, headers=PLAY_HEADERS)
+
+
+@app.get("/play/{share_id}", response_class=HTMLResponse)
+def play_shared(
+    share_id: str,
+    db: Session = Depends(get_db),
+    accept_language: str | None = Header(default=None),
+) -> HTMLResponse:
+    lang = resolve_lang(None, accept_language)
+    share = db.get(SharedGame, share_id) if len(share_id) <= 16 else None
+    if share is None or _aware(share.expires_at) < _utcnow():
+        return _gone_page(lang)
+    job = db.get(CompileJob, share.job_id)
+    if job is None or job.html_bin is None:
+        return _gone_page(lang)
+    page = bytes(job.html_bin)
+    if share.title:
+        # Name the tab after the game, and keep the emulator's boot
+        # (which retitles it, possibly after load) from undoing that.
+        # JSON string with "<" escaped so it can never close the script.
+        name = json.dumps(share.title).replace("<", "\\u003c").encode()
+        retitle = (
+            b"<script>document.title=" + name + b";Object.defineProperty(document,'title',"
+            b"{configurable:true,get:()=>" + name + b",set:()=>{}})</script>"
+        )
+        at = page.rfind(b"</body>")
+        page = page[:at] + retitle + page[at:] if at >= 0 else page + retitle
+    if share.hide_cursor:
+        at = page.find(b"</head>")
+        page = page[:at] + HIDE_CURSOR_STYLE + page[at:] if at >= 0 else HIDE_CURSOR_STYLE + page
+    return HTMLResponse(page, headers=PLAY_HEADERS)
 
 
 @app.websocket("/ws/check")

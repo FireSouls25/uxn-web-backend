@@ -36,6 +36,14 @@ tree, runs the pinned compiler, and returns build artifacts.
   `files` keys must be relative, no `..`, no absolute paths
   (ETAL `import`/`file()` resolve file-relative; drifblim path
   buffers are ~63B, so keep names short and bare).
+* `POST /share` — `{ job_id, title?, hide_cursor?, days? }` → `{ id,
+  url, expires_at }`: a temporary public link to a successful web
+  build. The row only points at the compile job (no copy). Links last
+  `SHARE_DAYS` (default 7, max 30 per request); expired rows are
+  pruned on the next share. `PUBLIC_BASE_URL` sets the link origin.
+* `GET /play/{id}` — the shared page, public, with
+  `Content-Security-Policy: sandbox allow-scripts` so user code runs
+  in an opaque origin, never as the API. `410` once expired.
 * `WS /ws/check` — live diagnostics while editing (`app/live.py`).
   Client sends `{type:"check", id, entry, files, lang}` after each
   pause in typing; server answers `checking` then `result {ok,
@@ -107,6 +115,7 @@ v1 (this milestone):
 * [x] `POST /compile` for `rom` + `web` targets
 * [x] `GET /targets`, `GET /version`, `GET /health`
 * [x] `WS /ws/check` live diagnostics (frontend: Code view → Live)
+* [x] `POST /share` + `GET /play/{id}` temporary play links (Export → Share link)
 * [x] Diagnostic parsing to `{file, line, col, msg}`
 * [x] Content-hash compile cache (identical requests return the original job)
 * [x] Explicit-row bundles (`linux-*`, `macos-*`) once verified

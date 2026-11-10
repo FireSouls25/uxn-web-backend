@@ -33,6 +33,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "error.rate_limited": "Rate limit exceeded. Retry in {seconds}s.",
         "error.server_busy": "Server busy compiling. Try again shortly.",
         "ok.compiled": "Compiled successfully.",
+        "error.share_not_web": "Only a successful web build can be shared.",
+        "error.share_gone": "This link has expired or never existed.",
     },
     "es": {
         "error.unknown_target": "Destino desconocido '{target}'. Admitidos: {supported}.",
@@ -49,6 +51,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "error.timeout": "La compilación excedió el límite de {seconds}s.",
         "error.compiler_missing": "Compilador no disponible: {detail}.",
         "error.job_not_found": "Trabajo '{job_id}' no encontrado.",
+        "error.share_not_web": "Solo se puede compartir una compilación web correcta.",
+        "error.share_gone": "Este enlace caducó o nunca existió.",
         "error.unauthorized": "Clave API inválida o ausente.",
         "error.service_locked": "Auth de servicio sin configurar: define API_KEYS primero.",
         "error.not_authenticated": "Debes entrar primero.",

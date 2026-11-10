@@ -39,6 +39,10 @@ class Settings:
     max_concurrent_compiles: int = int(_env("MAX_CONCURRENT_COMPILES", "4"))
     agent_turns_per_minute: int = int(_env("AGENT_TURNS_PER_MINUTE", "20"))
     agent_allow_guests: bool = _env("AGENT_ALLOW_GUESTS", "1") not in ("0", "false", "no")
+    share_days: int = int(_env("SHARE_DAYS", "7"))
+    # Base URL for share links (the API's public origin). Empty: use the
+    # origin the request came in on.
+    public_base_url: str = _env("PUBLIC_BASE_URL", "").rstrip("/")
     log_level: str = _env("LOG_LEVEL", "INFO").upper()
     jwt_secret: str = _env("JWT_SECRET", "dev-only-secret-change-me")
     access_minutes: int = int(_env("ACCESS_MINUTES", "30"))

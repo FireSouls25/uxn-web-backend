@@ -87,3 +87,22 @@ class LLMProviderState(Base):
     daily_token_budget: Mapped[int | None] = mapped_column(nullable=True)
     fails: Mapped[int] = mapped_column(default=0)
     cooldown_until: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SharedGame(Base):
+    """A temporary public link to one compiled web build: the share
+    points at its compile job (which already holds the page bytes), so
+    a link costs one small row. Expired rows are pruned on the next
+    share."""
+
+    __tablename__ = "shared_games"
+
+    id: Mapped[str] = mapped_column(String(16), primary_key=True)
+    job_id: Mapped[str] = mapped_column(String(36), index=True)
+    title: Mapped[str] = mapped_column(String(64), default="")
+    hide_cursor: Mapped[bool] = mapped_column(default=False)
+    owner_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+    expires_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), index=True)
