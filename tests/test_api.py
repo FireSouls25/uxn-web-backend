@@ -94,8 +94,27 @@ def test_compile_error_spanish():
     assert "nosuchfn" in first["msg"]
 
 
+def test_windows_download_is_one_exe():
+    """Served once the compiler vendors the windows VM: a single PE
+    with the ROM appended behind an ETALROM1 footer."""
+    import base64
+
+    from app.compiler import served_rows
+
+    if "windows" not in served_rows():
+        import pytest
+
+        pytest.skip("this compiler does not vendor the windows VM")
+    r = _compile(target="windows", mode="bundle")
+    assert r.status_code == 200, r.text
+    exe = base64.b64decode(r.json()["artifacts"]["bundle_b64"])
+    assert exe[:2] == b"MZ"
+    assert exe[-16:-8] == b"ETALROM1"
+
+
 def test_rejections():
-    assert _compile(target="windows").status_code == 400
+    # macOS Intel is not vendored by any compiler release (not a target).
+    assert _compile(target="macos-intel").status_code == 400
     assert _compile(target="amiga").status_code == 400
     assert _compile(files={"../evil.ux": HELLO}, entry="../evil.ux").status_code == 400
     assert _compile(files={"main.ux": HELLO}, entry="other.ux").status_code == 400

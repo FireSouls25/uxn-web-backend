@@ -237,7 +237,7 @@ def _artifact_name(target: str, mode: str) -> str:
     if target == "web":
         return "game.html"
     if served_rows().get(target, "").startswith("windows"):
-        return "game.zip"
+        return "game.exe"
     return "game"
 
 

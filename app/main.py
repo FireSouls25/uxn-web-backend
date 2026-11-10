@@ -304,7 +304,7 @@ def version() -> VersionResponse:
 def targets() -> TargetsResponse:
     rows = compiler.query_rows()
     served = compiler.served_rows()
-    kinds = {"web": "uxn5 html", "windows-x86_64": "zip"}
+    kinds = {"web": "uxn5 html", "windows-x86_64": "exe"}
     supported = [
         TargetInfo(
             id=tid,
