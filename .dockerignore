@@ -14,8 +14,10 @@ __pycache__/
 .ruff_cache/
 tests/
 docs/
-rag/
 docker-compose.yml
 README.md
 ARCHITECTURE.md
 *.md
+# The agent docs ship in the image (served to MCP clients, app/mcp.py).
+!rag/
+!rag/*.md
