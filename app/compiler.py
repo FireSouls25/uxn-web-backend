@@ -22,13 +22,38 @@ from pathlib import Path
 
 from .config import settings
 
-# Frontend-facing ids -> etal --target rows. Only rows served today;
-# everything else the compiler knows is reported as coming-soon.
+# Frontend-facing ids -> etal --target rows. Always served: linux, web.
 TARGET_ROWS: dict[str, str] = {
     "linux": "linux-x86_64",
     "web": "web",
 }
+# Served as soon as the installed compiler vendors that row's VM
+# (`etal --list-targets` says "yes"): the bundle only packages a VM
+# next to the ROM, so the Linux backend can build every OS's download.
+OPTIONAL_ROWS: dict[str, str] = {
+    "macos": "macos-arm64",
+    "macos-intel": "macos-x86_64",
+    "windows": "windows-x86_64",
+}
 COMING_SOON_ROWS = ("macos-arm64", "macos-x86_64", "linux-aarch64", "windows-x86_64")
+
+_rows_cache: dict[str, dict[str, dict[str, object]]] = {}
+
+
+def served_rows() -> dict[str, str]:
+    """Every target id this backend serves right now -> its etal row."""
+    try:
+        key = etal_bin()
+    except FileNotFoundError:
+        return dict(TARGET_ROWS)
+    if key not in _rows_cache:
+        _rows_cache[key] = query_rows()
+    rows = _rows_cache[key]
+    out = dict(TARGET_ROWS)
+    for tid, row in OPTIONAL_ROWS.items():
+        if rows.get(row, {}).get("vendored"):
+            out[tid] = row
+    return out
 
 ALLOWED_EXTENSIONS = (".ux", ".chr", ".icn", ".wav")
 
@@ -211,7 +236,7 @@ def _artifact_name(target: str, mode: str) -> str:
         return "game.rom"
     if target == "web":
         return "game.html"
-    if TARGET_ROWS.get(target, "").startswith("windows"):
+    if served_rows().get(target, "").startswith("windows"):
         return "game.zip"
     return "game"
 
@@ -222,7 +247,7 @@ def run_compile(target: str, mode: str, entry: str, files: dict[str, str]) -> Co
     Raises FileNotFoundError (no compiler) or TimeoutExpired.
     """
     binary = etal_bin()
-    row = TARGET_ROWS[target]
+    row = served_rows()[target]
     out_name = _artifact_name(target, mode)
     with tempfile.TemporaryDirectory(prefix="uxnweb-") as tmp:
         tmpdir = Path(tmp)

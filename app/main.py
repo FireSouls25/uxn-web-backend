@@ -19,7 +19,7 @@ from . import llm
 from . import llm_registry
 from . import llm_relay
 from .auth import TokenError
-from .compiler import COMING_SOON_ROWS, TARGET_ROWS
+from .compiler import COMING_SOON_ROWS, OPTIONAL_ROWS
 from .config import settings
 from .db import ensure_schema, get_db
 from .i18n import resolve_lang, t
@@ -296,19 +296,16 @@ def version() -> VersionResponse:
 @app.get("/targets", response_model=TargetsResponse)
 def targets() -> TargetsResponse:
     rows = compiler.query_rows()
+    served = compiler.served_rows()
+    kinds = {"web": "uxn5 html", "windows-x86_64": "zip"}
     supported = [
         TargetInfo(
-            id="linux",
-            etal_target="linux-x86_64",
-            kind="sh+tar.gz",
-            vendored=rows.get("linux-x86_64", {}).get("vendored"),
-        ),
-        TargetInfo(
-            id="web",
-            etal_target="web",
-            kind="uxn5 html",
-            vendored=rows.get("web", {}).get("vendored"),
-        ),
+            id=tid,
+            etal_target=row,
+            kind=kinds.get(row, "sh+tar.gz"),
+            vendored=rows.get(row, {}).get("vendored"),
+        )
+        for tid, row in served.items()
     ]
     coming_soon = [
         TargetInfo(
@@ -318,6 +315,7 @@ def targets() -> TargetsResponse:
             vendored=rows.get(row, {}).get("vendored"),
         )
         for row in COMING_SOON_ROWS
+        if row not in served.values()
     ]
     return TargetsResponse(supported=supported, coming_soon=coming_soon)
 
@@ -627,9 +625,10 @@ def compile_tree(
                 have=settings.etal_version,
             ),
         )
-    if body.target in TARGET_ROWS:
+    served = compiler.served_rows()
+    if body.target in served:
         pass
-    elif body.target in COMING_SOON_ROWS or body.target in ("macos", "windows", "native"):
+    elif body.target in COMING_SOON_ROWS or body.target in OPTIONAL_ROWS or body.target == "native":
         raise HTTPException(
             status_code=400,
             detail=t("error.coming_soon", lang, target=body.target),
@@ -641,7 +640,7 @@ def compile_tree(
                 "error.unknown_target",
                 lang,
                 target=body.target,
-                supported=", ".join(sorted(TARGET_ROWS)),
+                supported=", ".join(sorted(served)),
             ),
         )
 

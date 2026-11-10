@@ -42,8 +42,14 @@ def test_health():
 
 def test_targets():
     body = client.get("/targets").json()
-    assert {t["id"] for t in body["supported"]} == {"linux", "web"}
-    assert any(t["id"] == "windows-x86_64" for t in body["coming_soon"])
+    ids = {t["id"] for t in body["supported"]}
+    assert {"linux", "web"} <= ids
+    # Optional OS rows are served exactly when the compiler vendors their VM.
+    for t in body["supported"]:
+        if t["id"] not in ("linux", "web"):
+            assert t["vendored"] is True
+    if "windows" not in ids:
+        assert any(t["id"] == "windows-x86_64" for t in body["coming_soon"])
 
 
 def test_compile_tal():
@@ -233,3 +239,13 @@ def test_ws_check_requires_auth_when_keys_set(monkeypatch):
     assert e.value.code == 4401
     with client.websocket_connect("/ws/check?api_key=k1") as ws:
         assert ws.receive_json()["type"] == "hello"
+
+
+def test_unvendored_os_is_coming_soon(monkeypatch):
+    from app import compiler
+
+    monkeypatch.setattr(compiler, "served_rows", lambda: dict(compiler.TARGET_ROWS))
+    r = _compile(target="windows", mode="bundle")
+    assert r.status_code == 400
+    ids = {t["id"] for t in client.get("/targets").json()["supported"]}
+    assert ids == {"linux", "web"}
